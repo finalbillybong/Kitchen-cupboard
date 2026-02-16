@@ -20,10 +20,13 @@ class Settings(BaseSettings):
         "SECRET_KEY", ""
     )
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 15  # Short-lived access token
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30  # Long-lived refresh token in httpOnly cookie
     REGISTRATION_ENABLED: bool = os.environ.get("REGISTRATION_ENABLED", "false").lower() == "true"
     LOGIN_RATE_LIMIT_WINDOW: int = 300  # seconds
     LOGIN_RATE_LIMIT_MAX: int = 10  # max attempts per window per IP
+    REGISTER_RATE_LIMIT_WINDOW: int = 3600  # seconds (1 hour)
+    REGISTER_RATE_LIMIT_MAX: int = 5  # max registrations per window per IP
     APP_NAME: str = "Kitchen Cupboard"
     APP_VERSION: str = "1.0.0"
 
