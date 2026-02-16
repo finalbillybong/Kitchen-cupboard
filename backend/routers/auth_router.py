@@ -8,8 +8,8 @@ from auth import (
     hash_password,
     verify_password,
     create_access_token,
-    get_current_user,
-    get_current_admin,
+    get_current_user_jwt,
+    get_current_admin_jwt,
     generate_api_key,
     hash_api_key,
 )
@@ -113,14 +113,14 @@ def login(data: UserLogin, request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserOut)
-def get_me(user: User = Depends(get_current_user)):
+def get_me(user: User = Depends(get_current_user_jwt)):
     return UserOut.model_validate(user)
 
 
 @router.put("/me", response_model=UserOut)
 def update_me(
     data: UserUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db),
 ):
     if data.display_name is not None:
@@ -138,7 +138,7 @@ def update_me(
 @router.post("/change-password")
 def change_password(
     data: PasswordChange,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db),
 ):
     if not verify_password(data.current_password, user.password_hash):
@@ -148,12 +148,12 @@ def change_password(
     return {"message": "Password changed successfully"}
 
 
-# ─── API Keys ───────────────────────────────────────────────────────
+# ─── API Keys (admin only) ─────────────────────────────────────────
 
 @router.post("/api-keys", response_model=ApiKeyCreated, status_code=201)
 def create_api_key(
     data: ApiKeyCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     raw_key = generate_api_key()
@@ -173,7 +173,7 @@ def create_api_key(
 
 @router.get("/api-keys", response_model=list[ApiKeyOut])
 def list_api_keys(
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     keys = db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
@@ -183,7 +183,7 @@ def list_api_keys(
 @router.delete("/api-keys/{key_id}", status_code=204)
 def delete_api_key(
     key_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()
@@ -197,7 +197,7 @@ def delete_api_key(
 
 @router.post("/invite-codes", response_model=InviteCodeOut, status_code=201)
 def create_invite_code(
-    user: User = Depends(get_current_admin),
+    user: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     code = secrets.token_urlsafe(8)
@@ -214,7 +214,7 @@ def create_invite_code(
 
 @router.get("/invite-codes", response_model=list[InviteCodeOut])
 def list_invite_codes(
-    user: User = Depends(get_current_admin),
+    user: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     codes = db.query(InviteCode).filter(InviteCode.created_by == user.id).order_by(
@@ -227,7 +227,7 @@ def list_invite_codes(
 
 @router.get("/users", response_model=list[UserOut])
 def list_users(
-    user: User = Depends(get_current_admin),
+    user: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     users = db.query(User).order_by(User.created_at).all()
@@ -237,7 +237,7 @@ def list_users(
 @router.put("/users/{user_id}/toggle-active", response_model=UserOut)
 def toggle_user_active(
     user_id: str,
-    admin: User = Depends(get_current_admin),
+    admin: User = Depends(get_current_admin_jwt),
     db: Session = Depends(get_db),
 ):
     target = db.query(User).filter(User.id == user_id).first()

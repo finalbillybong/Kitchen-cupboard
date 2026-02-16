@@ -12,11 +12,11 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
-    { id: 'apikeys', label: 'API Keys', icon: Key },
     { id: 'categories', label: 'Categories', icon: Tag },
   ];
 
   if (user?.is_admin) {
+    tabs.push({ id: 'apikeys', label: 'API Keys', icon: Key });
     tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 

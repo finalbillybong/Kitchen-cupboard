@@ -105,3 +105,35 @@ def get_current_admin(user: User = Depends(get_current_user)) -> User:
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
     return user
+
+
+def get_current_user_jwt(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """JWT-only authentication. Rejects API keys.
+    Use this for sensitive endpoints (user management, API key creation, etc.)."""
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = _get_user_from_jwt(credentials.credentials, db)
+    if user:
+        return user
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="This endpoint requires login authentication (API keys not accepted)",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def get_current_admin_jwt(user: User = Depends(get_current_user_jwt)) -> User:
+    if not user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
+        )
+    return user

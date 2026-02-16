@@ -38,75 +38,14 @@ Create an API key via the web UI: **Settings > API Keys > Create**.
 
 ## Authentication
 
-All endpoints (except health check, login, and register) require a Bearer token.
-
-| Method | Format | Use Case |
-|--------|--------|----------|
-| JWT Token | `Bearer eyJhbG...` | Web UI login sessions |
-| API Key | `Bearer kc_xxxxx` | AI agents, scripts, external tools |
+API keys are used for programmatic/AI access. Create one via the web UI: **Settings > API Keys**.
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer kc_your_api_key_here
 ```
 
-Both token types are interchangeable — use API keys for programmatic access.
-
-### Getting a JWT Token
-
-```
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "username": "your_username",
-  "password": "your_password"
-}
-```
-
-Response:
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "token_type": "bearer",
-  "user": {
-    "id": "uuid",
-    "username": "your_username",
-    "email": "you@example.com",
-    "display_name": "Your Name",
-    "is_admin": false,
-    "is_active": true,
-    "created_at": "2025-01-01T00:00:00"
-  }
-}
-```
-
-### API Keys
-
-Create via the web UI (Settings > API Keys) or the API. The full key is only shown once at creation — save it immediately.
-
-```
-POST /api/auth/api-keys
-Authorization: Bearer <jwt_token>
-Content-Type: application/json
-
-{"name": "My AI Agent"}
-```
-
-Response:
-```json
-{
-  "id": "uuid",
-  "name": "My AI Agent",
-  "key_prefix": "kc_AbCdEfGh",
-  "key": "kc_AbCdEfGhIjKlMnOpQrStUvWxYz123456789abc",
-  "scopes": "read,write",
-  "is_active": true,
-  "last_used": null,
-  "created_at": "2025-01-01T00:00:00"
-}
-```
-
-> **Note:** The `scopes` field is stored but not currently enforced — all API keys have full read/write access.
+API keys can access: lists, items, categories, and suggestions.
+API keys **cannot** access: user management, password changes, API key creation, or admin endpoints. These require a web UI login session.
 
 ---
 
@@ -130,19 +69,6 @@ Returns a structured summary of all API capabilities, authentication methods, an
 |--------|----------|------|-------------|
 | `GET` | `/api/` | No | Health check and version info |
 | `GET` | `/api/context` | No | AI-friendly API context |
-
-### Authentication & Users
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `POST` | `/api/auth/register` | No | Register new account |
-| `POST` | `/api/auth/login` | No | Login, returns JWT |
-| `GET` | `/api/auth/me` | Yes | Get current user |
-| `PUT` | `/api/auth/me` | Yes | Update profile |
-| `POST` | `/api/auth/change-password` | Yes | Change password |
-| `POST` | `/api/auth/api-keys` | Yes | Create API key |
-| `GET` | `/api/auth/api-keys` | Yes | List API keys |
-| `DELETE` | `/api/auth/api-keys/{id}` | Yes | Delete API key |
 
 ### Shopping Lists
 
@@ -273,35 +199,6 @@ GET /api/suggestions?q=mil
   }
 ]
 ```
-
-### WebSocket (Real-time Updates)
-
-```
-WS /ws/{list_id}?token={jwt_token}
-```
-
-Receive real-time updates when other users modify a list. Messages are JSON:
-
-```json
-{
-  "type": "item_added",
-  "list_id": "uuid",
-  "data": { /* full item object */ },
-  "user_id": "uuid",
-  "username": "partner"
-}
-```
-
-Message types: `item_added`, `item_updated`, `item_checked`, `item_removed`, `checked_cleared`
-
-### Admin Endpoints
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/auth/users` | Admin | List all users |
-| `PUT` | `/api/auth/users/{id}/toggle-active` | Admin | Enable/disable user |
-| `POST` | `/api/auth/invite-codes` | Admin | Generate invite code |
-| `GET` | `/api/auth/invite-codes` | Admin | List invite codes |
 
 ---
 
