@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -15,7 +15,7 @@ from auth import (
 )
 from config import settings
 from database import get_db
-from models import User, ApiKey, InviteCode
+from models import User, ApiKey, InviteCode, utcnow
 from rate_limit import login_limiter
 from schemas import (
     UserCreate,
@@ -55,7 +55,7 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invalid or used invite code",
             )
-        if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
+        if invite.expires_at and invite.expires_at < utcnow():
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Invite code has expired",
@@ -203,7 +203,7 @@ def create_invite_code(
     invite = InviteCode(
         code=code,
         created_by=user.id,
-        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        expires_at=utcnow() + timedelta(days=7),
     )
     db.add(invite)
     db.commit()
