@@ -7,7 +7,7 @@ import Modal from '../components/Modal';
 import {
   ArrowLeft, Plus, Trash2, Check, X, Users, Settings2,
   ChevronDown, ChevronRight, MoreHorizontal, UserPlus, Archive, Search,
-  Pencil, GripVertical, Star,
+  Pencil, GripVertical, Star, ArrowUpDown,
 } from 'lucide-react';
 
 export default function ListDetailPage() {
@@ -34,7 +34,7 @@ export default function ListDetailPage() {
   const [shareUsername, setShareUsername] = useState('');
   const [shareRole, setShareRole] = useState('editor');
 
-  // Edit item modal
+  // Edit item modal (long press)
   const [editItem, setEditItem] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -43,6 +43,9 @@ export default function ListDetailPage() {
 
   // Collapsed categories
   const [collapsed, setCollapsed] = useState({});
+
+  // Reorder mode
+  const [reorderMode, setReorderMode] = useState(false);
 
   // Drag and drop
   const dragItem = useRef(null);
@@ -218,7 +221,7 @@ export default function ListDetailPage() {
     addInputRef.current?.focus();
   };
 
-  // ─── Edit Item ──────────────────────────────────────────────────
+  // ─── Edit Item (long press) ───────────────────────────────────
   const openEditModal = (item) => {
     setEditItem(item);
     setEditForm({
@@ -249,7 +252,7 @@ export default function ListDetailPage() {
     }
   };
 
-  // ─── Drag and Drop (reorder within category) ───────────────────
+  // ─── Drag and Drop (reorder mode only) ─────────────────────────
   const executeReorder = useCallback(async () => {
     const draggedId = dragItem.current;
     const overId = dragOverItem.current;
@@ -308,13 +311,13 @@ export default function ListDetailPage() {
     setDragOverId(null);
   };
 
-  // Touch-based drag and drop
+  // Touch-based drag and drop (reorder mode)
   useEffect(() => {
+    if (!reorderMode) return;
     const container = itemsContainerRef.current;
     if (!container) return;
 
     let touchDragId = null;
-    let touchStartY = 0;
     let draggedEl = null;
 
     const handleTouchStart = (e) => {
@@ -326,11 +329,8 @@ export default function ListDetailPage() {
       touchDragId = row.dataset.itemId;
       dragItem.current = touchDragId;
       dragGroupId.current = row.dataset.groupId;
-      touchStartY = e.touches[0].clientY;
       draggedEl = row;
       setDraggingId(touchDragId);
-
-      row.style.opacity = '0.5';
     };
 
     const handleTouchMove = (e) => {
@@ -341,7 +341,6 @@ export default function ListDetailPage() {
       const el = document.elementFromPoint(touch.clientX, touch.clientY);
       const row = el?.closest('[data-item-id]');
 
-      // Clear old highlights
       container.querySelectorAll('.drag-over-highlight').forEach((el) => {
         el.classList.remove('drag-over-highlight');
       });
@@ -356,11 +355,9 @@ export default function ListDetailPage() {
     const handleTouchEnd = () => {
       if (!touchDragId) return;
 
-      // Clean up styles
       container.querySelectorAll('.drag-over-highlight').forEach((el) => {
         el.classList.remove('drag-over-highlight');
       });
-      if (draggedEl) draggedEl.style.opacity = '';
 
       executeReorder();
 
@@ -382,7 +379,7 @@ export default function ListDetailPage() {
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [executeReorder]);
+  }, [reorderMode, executeReorder]);
 
   // ─── Quick Add (favourites) ─────────────────────────────────────
   const handleQuickAdd = async (fav) => {
@@ -418,7 +415,6 @@ export default function ListDetailPage() {
       groups[key].items.push(item);
     }
 
-    // Sort items within each group by sort_order
     for (const group of Object.values(groups)) {
       group.items.sort((a, b) =>
         a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at)
@@ -447,7 +443,6 @@ export default function ListDetailPage() {
   const { sortedGroups, checked } = groupedItems();
   const isOwner = list.owner_id === user?.id;
 
-  // Filter favourites to exclude items already in the list
   const itemNamesLower = new Set(items.map((i) => i.name.toLowerCase()));
   const availableFavourites = favourites.filter((f) => !itemNamesLower.has(f.name.toLowerCase()));
 
@@ -465,6 +460,19 @@ export default function ListDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          {/* Reorder toggle */}
+          <button
+            onClick={() => setReorderMode(!reorderMode)}
+            className={`p-2 rounded-xl transition-all font-medium text-sm flex items-center gap-1.5 ${
+              reorderMode
+                ? 'bg-primary-600 text-white shadow-md'
+                : 'btn-ghost'
+            }`}
+            title={reorderMode ? 'Done reordering' : 'Reorder items'}
+          >
+            <ArrowUpDown className="h-4 w-4" />
+            {reorderMode && <span>Done</span>}
+          </button>
           <button onClick={() => setShowShareModal(true)} className="btn-ghost p-2" title="Share">
             <UserPlus className="h-5 w-5" />
           </button>
@@ -476,87 +484,95 @@ export default function ListDetailPage() {
         </div>
       </div>
 
-      {/* Add Item Form */}
-      <form onSubmit={handleAddItem} className="card p-3 mb-4">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              ref={addInputRef}
-              type="text"
-              value={newItemName}
-              onChange={(e) => setNewItemName(e.target.value)}
-              className="input"
-              placeholder="Add an item..."
-              autoComplete="off"
-            />
-            {/* Suggestions dropdown */}
-            {suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 overflow-hidden">
-                {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => applySuggestion(s)}
-                    className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between"
-                  >
-                    <span className="font-medium">{s.name}</span>
-                    {s.category_name && (
-                      <span className="text-xs text-gray-400 dark:text-gray-500">{s.category_name}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="btn-ghost p-2.5"
-          >
-            <MoreHorizontal className="h-5 w-5" />
-          </button>
-          <button type="submit" className="btn-primary px-4">
-            <Plus className="h-5 w-5" />
-          </button>
+      {/* Reorder mode banner */}
+      {reorderMode && (
+        <div className="mb-4 px-4 py-2.5 rounded-xl bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 text-sm font-medium flex items-center gap-2">
+          <GripVertical className="h-4 w-4 flex-shrink-0" />
+          Drag items to reorder. Tap <strong>Done</strong> when finished.
         </div>
+      )}
 
-        {/* Advanced options */}
-        {showAdvanced && (
-          <div className="flex gap-2 mt-2 flex-wrap">
-            <input
-              type="number"
-              value={newItemQty}
-              onChange={(e) => setNewItemQty(e.target.value)}
-              className="input w-20"
-              placeholder="Qty"
-              min="0"
-              step="any"
-            />
-            <input
-              type="text"
-              value={newItemUnit}
-              onChange={(e) => setNewItemUnit(e.target.value)}
-              className="input w-24"
-              placeholder="Unit"
-            />
-            <select
-              value={newItemCat}
-              onChange={(e) => setNewItemCat(e.target.value)}
-              className="input flex-1 min-w-[140px]"
+      {/* Add Item Form */}
+      {!reorderMode && (
+        <form onSubmit={handleAddItem} className="card p-3 mb-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <input
+                ref={addInputRef}
+                type="text"
+                value={newItemName}
+                onChange={(e) => setNewItemName(e.target.value)}
+                className="input"
+                placeholder="Add an item..."
+                autoComplete="off"
+              />
+              {suggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 overflow-hidden">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => applySuggestion(s)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between"
+                    >
+                      <span className="font-medium">{s.name}</span>
+                      {s.category_name && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">{s.category_name}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="btn-ghost p-2.5"
             >
-              <option value="">Auto category</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              <MoreHorizontal className="h-5 w-5" />
+            </button>
+            <button type="submit" className="btn-primary px-4">
+              <Plus className="h-5 w-5" />
+            </button>
           </div>
-        )}
-      </form>
+
+          {showAdvanced && (
+            <div className="flex gap-2 mt-2 flex-wrap">
+              <input
+                type="number"
+                value={newItemQty}
+                onChange={(e) => setNewItemQty(e.target.value)}
+                className="input w-20"
+                placeholder="Qty"
+                min="0"
+                step="any"
+              />
+              <input
+                type="text"
+                value={newItemUnit}
+                onChange={(e) => setNewItemUnit(e.target.value)}
+                className="input w-24"
+                placeholder="Unit"
+              />
+              <select
+                value={newItemCat}
+                onChange={(e) => setNewItemCat(e.target.value)}
+                className="input flex-1 min-w-[140px]"
+              >
+                <option value="">Auto category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </form>
+      )}
 
       {/* Favourites / Quick Add */}
-      {availableFavourites.length > 0 && (
+      {!reorderMode && availableFavourites.length > 0 && (
         <div className="mb-4">
           <button
             onClick={() => setShowFavourites(!showFavourites)}
@@ -624,9 +640,10 @@ export default function ListDetailPage() {
                       onToggle={handleToggleCheck}
                       onDelete={handleDeleteItem}
                       onEdit={openEditModal}
-                      onDragStart={handleDragStart}
-                      onDragEnter={handleDragEnter}
-                      onDragEnd={handleDragEnd}
+                      reorderMode={reorderMode}
+                      onDragStart={reorderMode ? handleDragStart : undefined}
+                      onDragEnter={reorderMode ? handleDragEnter : undefined}
+                      onDragEnd={reorderMode ? handleDragEnd : undefined}
                       isDragging={draggingId === item.id}
                       isDragOver={dragOverId === item.id && draggingId !== item.id}
                     />
@@ -838,46 +855,100 @@ export default function ListDetailPage() {
 
 function ItemRow({
   item, groupId, onToggle, onDelete, onEdit,
-  onDragStart, onDragEnter, onDragEnd,
+  reorderMode, onDragStart, onDragEnter, onDragEnd,
   isDragging, isDragOver, isChecked,
 }) {
+  const longPressTimer = useRef(null);
+  const longPressTriggered = useRef(false);
+  const pointerStart = useRef(null);
+
+  useEffect(() => {
+    return () => clearTimeout(longPressTimer.current);
+  }, []);
+
+  const handlePointerDown = (e) => {
+    if (reorderMode) return;
+    longPressTriggered.current = false;
+    pointerStart.current = { x: e.clientX, y: e.clientY };
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      onEdit(item);
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 500);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!pointerStart.current) return;
+    const dx = Math.abs(e.clientX - pointerStart.current.x);
+    const dy = Math.abs(e.clientY - pointerStart.current.y);
+    if (dx > 10 || dy > 10) {
+      clearTimeout(longPressTimer.current);
+      pointerStart.current = null;
+    }
+  };
+
+  const handlePointerUp = () => {
+    clearTimeout(longPressTimer.current);
+    pointerStart.current = null;
+  };
+
+  // In reorder mode: the whole row is a drag target, visuals are bold
+  // In normal mode: long press to edit, normal check/delete
+  const dragProps = reorderMode && !isChecked ? {
+    draggable: true,
+    onDragStart: (e) => onDragStart(e, item, groupId),
+    onDragEnter: (e) => onDragEnter(e, item),
+    onDragEnd: onDragEnd,
+    onDragOver: (e) => e.preventDefault(),
+  } : {};
+
+  // Build class for the dragged item - make it really stand out
+  let rowClass = 'card px-3 py-2.5 flex items-center gap-3 group transition-all select-none';
+  if (isDragging) {
+    rowClass += ' scale-[1.03] shadow-2xl ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/40 z-50 relative opacity-90';
+  } else if (isDragOver) {
+    rowClass += ' ring-2 ring-primary-300 ring-offset-2 dark:ring-offset-gray-950 bg-primary-50/50 dark:bg-primary-900/20';
+  }
+
   return (
     <div
       data-item-id={item.id}
       data-group-id={groupId}
-      draggable={!isChecked && !!onDragStart}
-      onDragStart={onDragStart ? (e) => onDragStart(e, item, groupId) : undefined}
-      onDragEnter={onDragEnter ? (e) => onDragEnter(e, item) : undefined}
-      onDragEnd={onDragEnd || undefined}
-      onDragOver={(e) => e.preventDefault()}
-      className={`card px-3 py-2.5 flex items-center gap-3 group transition-all ${
-        isDragging ? 'opacity-40 scale-95' : ''
-      } ${isDragOver ? 'ring-2 ring-primary-400 ring-offset-1 dark:ring-offset-gray-950' : ''}`}
+      className={rowClass}
+      onContextMenu={(e) => { if (!reorderMode) e.preventDefault(); }}
+      {...dragProps}
     >
-      {/* Drag handle (only for unchecked items) */}
-      {!isChecked && (
+      {/* Drag handle - only in reorder mode */}
+      {reorderMode && !isChecked && (
         <div
           data-drag-handle
-          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500 touch-none"
+          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-primary-400 dark:text-primary-500 touch-none"
         >
-          <GripVertical className="h-4 w-4" />
+          <GripVertical className="h-5 w-5" />
         </div>
       )}
 
-      <button
-        onClick={() => onToggle(item)}
-        className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
-          item.checked
-            ? 'bg-primary-600 border-primary-600 check-animation'
-            : 'border-gray-300 dark:border-gray-600 hover:border-primary-400'
-        }`}
-      >
-        {item.checked && <Check className="h-3.5 w-3.5 text-white" />}
-      </button>
+      {/* Checkbox - hidden in reorder mode */}
+      {!reorderMode && (
+        <button
+          onClick={() => onToggle(item)}
+          className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+            item.checked
+              ? 'bg-primary-600 border-primary-600 check-animation'
+              : 'border-gray-300 dark:border-gray-600 hover:border-primary-400'
+          }`}
+        >
+          {item.checked && <Check className="h-3.5 w-3.5 text-white" />}
+        </button>
+      )}
 
+      {/* Content area - long press to edit */}
       <div
-        className="flex-1 min-w-0 cursor-pointer"
-        onClick={() => onEdit(item)}
+        className="flex-1 min-w-0"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
           {item.name}
@@ -905,22 +976,25 @@ function ItemRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <button
-          onClick={() => onEdit(item)}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-primary-500 p-1"
-          title="Edit"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={() => onDelete(item.id)}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
-          title="Delete"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-      </div>
+      {/* Action buttons - hidden in reorder mode */}
+      {!reorderMode && (
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            onClick={() => onEdit(item)}
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-primary-500 p-1"
+            title="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
+            title="Delete"
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
