@@ -7,6 +7,7 @@ import Modal from '../components/Modal';
 import {
   ArrowLeft, Plus, Trash2, Check, X, Users, Settings2,
   ChevronDown, ChevronRight, MoreHorizontal, UserPlus, Archive, Search,
+  Pencil, GripVertical, Star,
 } from 'lucide-react';
 
 export default function ListDetailPage() {
@@ -33,8 +34,27 @@ export default function ListDetailPage() {
   const [shareUsername, setShareUsername] = useState('');
   const [shareRole, setShareRole] = useState('editor');
 
+  // Edit item modal
+  const [editItem, setEditItem] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: '', quantity: '1', unit: '', category_id: '', notes: '',
+  });
+
   // Collapsed categories
   const [collapsed, setCollapsed] = useState({});
+
+  // Drag and drop
+  const dragItem = useRef(null);
+  const dragOverItem = useRef(null);
+  const dragGroupId = useRef(null);
+  const [draggingId, setDraggingId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const itemsContainerRef = useRef(null);
+
+  // Favourites
+  const [favourites, setFavourites] = useState([]);
+  const [showFavourites, setShowFavourites] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -58,9 +78,14 @@ export default function ListDetailPage() {
     fetchData();
   }, [fetchData]);
 
+  // Fetch favourites
+  useEffect(() => {
+    api.getFavourites(15).then(setFavourites).catch(() => {});
+  }, []);
+
   // WebSocket for real-time updates
   const handleWsMessage = useCallback((msg) => {
-    if (msg.user_id === user?.id) return; // Skip own actions
+    if (msg.user_id === user?.id) return;
 
     switch (msg.type) {
       case 'item_added':
@@ -76,6 +101,14 @@ export default function ListDetailPage() {
       case 'checked_cleared':
         setItems((prev) => prev.filter((i) => !i.checked));
         break;
+      case 'items_reordered': {
+        const orderMap = {};
+        msg.data.item_ids.forEach((id, i) => { orderMap[id] = i; });
+        setItems((prev) => prev.map((item) =>
+          orderMap[item.id] !== undefined ? { ...item, sort_order: orderMap[item.id] } : item
+        ));
+        break;
+      }
       default:
         break;
     }
@@ -185,6 +218,187 @@ export default function ListDetailPage() {
     addInputRef.current?.focus();
   };
 
+  // ─── Edit Item ──────────────────────────────────────────────────
+  const openEditModal = (item) => {
+    setEditItem(item);
+    setEditForm({
+      name: item.name,
+      quantity: String(item.quantity),
+      unit: item.unit || '',
+      category_id: item.category_id || '',
+      notes: item.notes || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editItem) return;
+    try {
+      const updated = await api.updateItem(listId, editItem.id, {
+        name: editForm.name.trim(),
+        quantity: parseFloat(editForm.quantity) || 1,
+        unit: editForm.unit,
+        category_id: editForm.category_id || null,
+        notes: editForm.notes,
+      });
+      setItems((prev) => prev.map((i) => (i.id === editItem.id ? updated : i)));
+      setShowEditModal(false);
+      setEditItem(null);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  // ─── Drag and Drop (reorder within category) ───────────────────
+  const executeReorder = useCallback(async () => {
+    const draggedId = dragItem.current;
+    const overId = dragOverItem.current;
+    const groupId = dragGroupId.current;
+    if (!draggedId || !overId || draggedId === overId) return;
+
+    const groupItems = items
+      .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
+      .sort((a, b) => a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at));
+
+    const reordered = [...groupItems];
+    const fromIdx = reordered.findIndex((i) => i.id === draggedId);
+    const toIdx = reordered.findIndex((i) => i.id === overId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    const itemIds = reordered.map((i) => i.id);
+
+    setItems((prev) => {
+      const next = [...prev];
+      itemIds.forEach((id, index) => {
+        const idx = next.findIndex((i) => i.id === id);
+        if (idx !== -1) next[idx] = { ...next[idx], sort_order: index };
+      });
+      return next;
+    });
+
+    try {
+      await api.reorderItems(listId, itemIds);
+    } catch (e) {
+      console.error('Reorder failed:', e);
+    }
+  }, [items, listId]);
+
+  const handleDragStart = (e, item, groupId) => {
+    dragItem.current = item.id;
+    dragGroupId.current = groupId;
+    setDraggingId(item.id);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', '');
+  };
+
+  const handleDragEnter = (e, item) => {
+    e.preventDefault();
+    dragOverItem.current = item.id;
+    setDragOverId(item.id);
+  };
+
+  const handleDragEnd = () => {
+    executeReorder();
+    dragItem.current = null;
+    dragOverItem.current = null;
+    dragGroupId.current = null;
+    setDraggingId(null);
+    setDragOverId(null);
+  };
+
+  // Touch-based drag and drop
+  useEffect(() => {
+    const container = itemsContainerRef.current;
+    if (!container) return;
+
+    let touchDragId = null;
+    let touchStartY = 0;
+    let draggedEl = null;
+
+    const handleTouchStart = (e) => {
+      const grip = e.target.closest('[data-drag-handle]');
+      if (!grip) return;
+      const row = grip.closest('[data-item-id]');
+      if (!row) return;
+
+      touchDragId = row.dataset.itemId;
+      dragItem.current = touchDragId;
+      dragGroupId.current = row.dataset.groupId;
+      touchStartY = e.touches[0].clientY;
+      draggedEl = row;
+      setDraggingId(touchDragId);
+
+      row.style.opacity = '0.5';
+    };
+
+    const handleTouchMove = (e) => {
+      if (!touchDragId) return;
+      e.preventDefault();
+
+      const touch = e.touches[0];
+      const el = document.elementFromPoint(touch.clientX, touch.clientY);
+      const row = el?.closest('[data-item-id]');
+
+      // Clear old highlights
+      container.querySelectorAll('.drag-over-highlight').forEach((el) => {
+        el.classList.remove('drag-over-highlight');
+      });
+
+      if (row && row.dataset.itemId !== touchDragId) {
+        dragOverItem.current = row.dataset.itemId;
+        setDragOverId(row.dataset.itemId);
+        row.classList.add('drag-over-highlight');
+      }
+    };
+
+    const handleTouchEnd = () => {
+      if (!touchDragId) return;
+
+      // Clean up styles
+      container.querySelectorAll('.drag-over-highlight').forEach((el) => {
+        el.classList.remove('drag-over-highlight');
+      });
+      if (draggedEl) draggedEl.style.opacity = '';
+
+      executeReorder();
+
+      touchDragId = null;
+      draggedEl = null;
+      dragItem.current = null;
+      dragOverItem.current = null;
+      dragGroupId.current = null;
+      setDraggingId(null);
+      setDragOverId(null);
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [executeReorder]);
+
+  // ─── Quick Add (favourites) ─────────────────────────────────────
+  const handleQuickAdd = async (fav) => {
+    try {
+      const item = await api.createItem(listId, {
+        name: fav.name,
+        quantity: 1,
+        unit: '',
+        category_id: fav.category_id || null,
+      });
+      setItems((prev) => [...prev, item]);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   // Group items by category
   const groupedItems = () => {
     const unchecked = items.filter((i) => !i.checked);
@@ -202,6 +416,13 @@ export default function ListDetailPage() {
         };
       }
       groups[key].items.push(item);
+    }
+
+    // Sort items within each group by sort_order
+    for (const group of Object.values(groups)) {
+      group.items.sort((a, b) =>
+        a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at)
+      );
     }
 
     const sortedGroups = Object.values(groups).sort((a, b) => {
@@ -225,6 +446,10 @@ export default function ListDetailPage() {
 
   const { sortedGroups, checked } = groupedItems();
   const isOwner = list.owner_id === user?.id;
+
+  // Filter favourites to exclude items already in the list
+  const itemNamesLower = new Set(items.map((i) => i.name.toLowerCase()));
+  const availableFavourites = favourites.filter((f) => !itemNamesLower.has(f.name.toLowerCase()));
 
   return (
     <div>
@@ -330,6 +555,39 @@ export default function ListDetailPage() {
         )}
       </form>
 
+      {/* Favourites / Quick Add */}
+      {availableFavourites.length > 0 && (
+        <div className="mb-4">
+          <button
+            onClick={() => setShowFavourites(!showFavourites)}
+            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 mb-2"
+          >
+            <Star className="h-3.5 w-3.5" />
+            Quick add
+            {showFavourites ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          </button>
+          {showFavourites && (
+            <div className="flex gap-2 flex-wrap">
+              {availableFavourites.slice(0, 12).map((fav, i) => (
+                <button
+                  key={i}
+                  onClick={() => handleQuickAdd(fav)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-400 transition-colors"
+                >
+                  <Plus className="h-3 w-3" />
+                  {fav.name}
+                  {fav.category_name && (
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      {fav.category_name}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Items grouped by category */}
       {sortedGroups.length === 0 && checked.length === 0 ? (
         <div className="text-center py-16">
@@ -337,7 +595,7 @@ export default function ListDetailPage() {
           <p className="text-gray-400 dark:text-gray-500">No items yet. Add something above!</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4" ref={itemsContainerRef}>
           {sortedGroups.map((group) => (
             <div key={group.id}>
               <button
@@ -362,8 +620,15 @@ export default function ListDetailPage() {
                     <ItemRow
                       key={item.id}
                       item={item}
+                      groupId={group.id}
                       onToggle={handleToggleCheck}
                       onDelete={handleDeleteItem}
+                      onEdit={openEditModal}
+                      onDragStart={handleDragStart}
+                      onDragEnter={handleDragEnter}
+                      onDragEnd={handleDragEnd}
+                      isDragging={draggingId === item.id}
+                      isDragOver={dragOverId === item.id && draggingId !== item.id}
                     />
                   ))}
                 </div>
@@ -396,8 +661,11 @@ export default function ListDetailPage() {
                     <ItemRow
                       key={item.id}
                       item={item}
+                      groupId="checked"
                       onToggle={handleToggleCheck}
                       onDelete={handleDeleteItem}
+                      onEdit={openEditModal}
+                      isChecked
                     />
                   ))}
                 </div>
@@ -406,6 +674,83 @@ export default function ListDetailPage() {
           )}
         </div>
       )}
+
+      {/* Edit Item Modal */}
+      <Modal open={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Item">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
+            <input
+              type="text"
+              value={editForm.name}
+              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              className="input"
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Quantity</label>
+              <input
+                type="number"
+                value={editForm.quantity}
+                onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                className="input"
+                min="0"
+                step="any"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Unit</label>
+              <input
+                type="text"
+                value={editForm.unit}
+                onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                className="input"
+                placeholder="kg, litres, packs..."
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Category</label>
+            <select
+              value={editForm.category_id}
+              onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}
+              className="input"
+            >
+              <option value="">Uncategorized</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Notes</label>
+            <textarea
+              value={editForm.notes}
+              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              className="input min-h-[80px] resize-y"
+              placeholder="Any extra details..."
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowEditModal(false)}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveEdit}
+              className="btn-primary flex-1"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Share Modal */}
       <Modal open={showShareModal} onClose={() => setShowShareModal(false)} title="Share List">
@@ -491,9 +836,34 @@ export default function ListDetailPage() {
   );
 }
 
-function ItemRow({ item, onToggle, onDelete }) {
+function ItemRow({
+  item, groupId, onToggle, onDelete, onEdit,
+  onDragStart, onDragEnter, onDragEnd,
+  isDragging, isDragOver, isChecked,
+}) {
   return (
-    <div className="card px-3 py-2.5 flex items-center gap-3 group">
+    <div
+      data-item-id={item.id}
+      data-group-id={groupId}
+      draggable={!isChecked && !!onDragStart}
+      onDragStart={onDragStart ? (e) => onDragStart(e, item, groupId) : undefined}
+      onDragEnter={onDragEnter ? (e) => onDragEnter(e, item) : undefined}
+      onDragEnd={onDragEnd || undefined}
+      onDragOver={(e) => e.preventDefault()}
+      className={`card px-3 py-2.5 flex items-center gap-3 group transition-all ${
+        isDragging ? 'opacity-40 scale-95' : ''
+      } ${isDragOver ? 'ring-2 ring-primary-400 ring-offset-1 dark:ring-offset-gray-950' : ''}`}
+    >
+      {/* Drag handle (only for unchecked items) */}
+      {!isChecked && (
+        <div
+          data-drag-handle
+          className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-300 dark:text-gray-600 hover:text-gray-400 dark:hover:text-gray-500 touch-none"
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+      )}
+
       <button
         onClick={() => onToggle(item)}
         className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
@@ -505,7 +875,10 @@ function ItemRow({ item, onToggle, onDelete }) {
         {item.checked && <Check className="h-3.5 w-3.5 text-white" />}
       </button>
 
-      <div className="flex-1 min-w-0">
+      <div
+        className="flex-1 min-w-0 cursor-pointer"
+        onClick={() => onEdit(item)}
+      >
         <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
           {item.name}
         </div>
@@ -524,15 +897,30 @@ function ItemRow({ item, onToggle, onDelete }) {
               {item.category_name}
             </span>
           )}
+          {item.notes && (
+            <span className="truncate max-w-[120px]" title={item.notes}>
+              {item.notes}
+            </span>
+          )}
         </div>
       </div>
 
-      <button
-        onClick={() => onDelete(item.id)}
-        className="flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
-      >
-        <Trash2 className="h-4 w-4" />
-      </button>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          onClick={() => onEdit(item)}
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-primary-500 p-1"
+          title="Edit"
+        >
+          <Pencil className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={() => onDelete(item.id)}
+          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
+          title="Delete"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   );
 }

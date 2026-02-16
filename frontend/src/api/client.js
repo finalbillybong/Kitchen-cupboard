@@ -199,6 +199,13 @@ class ApiClient {
     return this.request(`/lists/${listId}/items/clear-checked`, { method: 'POST' });
   }
 
+  reorderItems(listId, itemIds) {
+    return this.request(`/lists/${listId}/items/reorder`, {
+      method: 'POST',
+      body: JSON.stringify({ item_ids: itemIds }),
+    });
+  }
+
   // Categories
   getCategories() {
     return this.request('/categories');
@@ -225,6 +232,11 @@ class ApiClient {
   // Suggestions
   getSuggestions(query) {
     return this.request(`/suggestions?q=${encodeURIComponent(query)}`);
+  }
+
+  // Favourites
+  getFavourites(limit = 20) {
+    return this.request(`/favourites?limit=${limit}`);
   }
 }
 

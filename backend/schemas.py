@@ -150,6 +150,10 @@ class ItemUpdate(BaseModel):
     sort_order: Optional[int] = None
 
 
+class ItemReorderRequest(BaseModel):
+    item_ids: list[str]
+
+
 class ItemOut(BaseModel):
     id: str
     list_id: str

@@ -61,3 +61,8 @@
   50% { transform: scale(1.1); }
   100% { transform: scale(1); }
 }
+
+/* Drag and drop highlight (touch) */
+.drag-over-highlight {
+  @apply ring-2 ring-primary-400 ring-offset-1 dark:ring-offset-gray-950;
+}
