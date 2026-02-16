@@ -287,8 +287,10 @@ def get_suggestions(
     if len(q) < 1:
         return []
 
+    # Escape SQL LIKE wildcards in user input to prevent wildcard injection
+    safe_q = q.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     memories = db.query(ItemCategoryMemory).filter(
-        ItemCategoryMemory.item_name_lower.like(f"%{q.lower()}%")
+        ItemCategoryMemory.item_name_lower.like(f"%{safe_q}%", escape="\\")
     ).order_by(ItemCategoryMemory.usage_count.desc()).limit(10).all()
 
     results = []
