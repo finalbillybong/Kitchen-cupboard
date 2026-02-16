@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { ChefHat, Eye, EyeOff } from 'lucide-react';
@@ -10,6 +10,14 @@ export default function LoginPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inviteRequired, setInviteRequired] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/registration-status')
+      .then(r => r.json())
+      .then(data => setInviteRequired(data.invite_required))
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,12 +93,21 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
-          Don't have an account?{' '}
-          <Link to="/register" className="text-primary-600 dark:text-primary-400 hover:underline font-medium">
-            Sign up
-          </Link>
-        </p>
+        {inviteRequired ? (
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
+            Have an invite code?{' '}
+            <Link to="/register" className="text-primary-600 dark:text-primary-400 hover:underline font-medium">
+              Sign up
+            </Link>
+          </p>
+        ) : (
+          <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-primary-600 dark:text-primary-400 hover:underline font-medium">
+              Sign up
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   );

@@ -82,6 +82,15 @@ def health():
     }
 
 
+@app.get("/api/registration-status", tags=["Health"])
+def registration_status():
+    """Public endpoint for the frontend to check registration policy."""
+    return {
+        "open": settings.REGISTRATION_ENABLED,
+        "invite_required": not settings.REGISTRATION_ENABLED,
+    }
+
+
 @app.get("/api/context", tags=["AI Context"])
 def ai_context(db: Session = Depends(get_db)):
     """
