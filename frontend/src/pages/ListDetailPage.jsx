@@ -5,9 +5,9 @@ import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
 import Modal from '../components/Modal';
 import {
-  ArrowLeft, Plus, Trash2, Check, X, Users, Settings2,
+  ArrowLeft, Plus, Trash2, Check, X, Settings2,
   ChevronDown, ChevronRight, MoreHorizontal, UserPlus, Archive, Search,
-  Pencil, GripVertical, Star, ArrowUpDown,
+  GripVertical, Star, ArrowUpDown,
 } from 'lucide-react';
 
 export default function ListDetailPage() {
@@ -49,10 +49,8 @@ export default function ListDetailPage() {
 
   // Drag and drop
   const dragItem = useRef(null);
-  const dragOverItem = useRef(null);
   const dragGroupId = useRef(null);
   const [draggingId, setDraggingId] = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
   const itemsContainerRef = useRef(null);
 
   // Favourites
@@ -252,41 +250,34 @@ export default function ListDetailPage() {
     }
   };
 
-  // ─── Drag and Drop (reorder mode only) ─────────────────────────
-  const executeReorder = useCallback(async () => {
+  // ─── Live Drag Reorder ─────────────────────────────────────────
+  // Immediately moves the dragged item to the target position in state,
+  // so the list visually rearranges as you drag.
+  const liveDragReorder = useCallback((targetItemId, groupId) => {
     const draggedId = dragItem.current;
-    const overId = dragOverItem.current;
-    const groupId = dragGroupId.current;
-    if (!draggedId || !overId || draggedId === overId) return;
-
-    const groupItems = items
-      .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
-      .sort((a, b) => a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at));
-
-    const reordered = [...groupItems];
-    const fromIdx = reordered.findIndex((i) => i.id === draggedId);
-    const toIdx = reordered.findIndex((i) => i.id === overId);
-    if (fromIdx === -1 || toIdx === -1) return;
-
-    const [moved] = reordered.splice(fromIdx, 1);
-    reordered.splice(toIdx, 0, moved);
-    const itemIds = reordered.map((i) => i.id);
+    if (!draggedId || draggedId === targetItemId) return;
 
     setItems((prev) => {
-      const next = [...prev];
-      itemIds.forEach((id, index) => {
-        const idx = next.findIndex((i) => i.id === id);
-        if (idx !== -1) next[idx] = { ...next[idx], sort_order: index };
-      });
-      return next;
-    });
+      const groupItems = prev
+        .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
+        .sort((a, b) => a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at));
 
-    try {
-      await api.reorderItems(listId, itemIds);
-    } catch (e) {
-      console.error('Reorder failed:', e);
-    }
-  }, [items, listId]);
+      const fromIdx = groupItems.findIndex((i) => i.id === draggedId);
+      const toIdx = groupItems.findIndex((i) => i.id === targetItemId);
+      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
+
+      const reordered = [...groupItems];
+      const [moved] = reordered.splice(fromIdx, 1);
+      reordered.splice(toIdx, 0, moved);
+
+      const orderMap = {};
+      reordered.forEach((item, idx) => { orderMap[item.id] = idx; });
+
+      return prev.map((item) =>
+        orderMap[item.id] !== undefined ? { ...item, sort_order: orderMap[item.id] } : item
+      );
+    });
+  }, []);
 
   const handleDragStart = (e, item, groupId) => {
     dragItem.current = item.id;
@@ -296,19 +287,28 @@ export default function ListDetailPage() {
     e.dataTransfer.setData('text/plain', '');
   };
 
-  const handleDragEnter = (e, item) => {
+  const handleDragEnter = (e, item, groupId) => {
     e.preventDefault();
-    dragOverItem.current = item.id;
-    setDragOverId(item.id);
+    liveDragReorder(item.id, groupId);
   };
 
   const handleDragEnd = () => {
-    executeReorder();
+    // Persist the current order to backend
+    const groupId = dragGroupId.current;
+    if (groupId) {
+      setItems((currentItems) => {
+        const groupItems = currentItems
+          .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
+          .sort((a, b) => a.sort_order - b.sort_order);
+        const itemIds = groupItems.map((i) => i.id);
+        api.reorderItems(listId, itemIds).catch(console.error);
+        return currentItems;
+      });
+    }
+
     dragItem.current = null;
-    dragOverItem.current = null;
     dragGroupId.current = null;
     setDraggingId(null);
-    setDragOverId(null);
   };
 
   // Touch-based drag and drop (reorder mode)
@@ -318,7 +318,7 @@ export default function ListDetailPage() {
     if (!container) return;
 
     let touchDragId = null;
-    let draggedEl = null;
+    let lastHoverId = null;
 
     const handleTouchStart = (e) => {
       const grip = e.target.closest('[data-drag-handle]');
@@ -327,9 +327,9 @@ export default function ListDetailPage() {
       if (!row) return;
 
       touchDragId = row.dataset.itemId;
+      lastHoverId = null;
       dragItem.current = touchDragId;
       dragGroupId.current = row.dataset.groupId;
-      draggedEl = row;
       setDraggingId(touchDragId);
     };
 
@@ -341,33 +341,33 @@ export default function ListDetailPage() {
       const el = document.elementFromPoint(touch.clientX, touch.clientY);
       const row = el?.closest('[data-item-id]');
 
-      container.querySelectorAll('.drag-over-highlight').forEach((el) => {
-        el.classList.remove('drag-over-highlight');
-      });
-
-      if (row && row.dataset.itemId !== touchDragId) {
-        dragOverItem.current = row.dataset.itemId;
-        setDragOverId(row.dataset.itemId);
-        row.classList.add('drag-over-highlight');
+      if (row && row.dataset.itemId !== touchDragId && row.dataset.itemId !== lastHoverId) {
+        lastHoverId = row.dataset.itemId;
+        liveDragReorder(row.dataset.itemId, row.dataset.groupId);
       }
     };
 
     const handleTouchEnd = () => {
       if (!touchDragId) return;
 
-      container.querySelectorAll('.drag-over-highlight').forEach((el) => {
-        el.classList.remove('drag-over-highlight');
-      });
-
-      executeReorder();
+      // Persist
+      const groupId = dragGroupId.current;
+      if (groupId) {
+        setItems((currentItems) => {
+          const groupItems = currentItems
+            .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
+            .sort((a, b) => a.sort_order - b.sort_order);
+          const itemIds = groupItems.map((i) => i.id);
+          api.reorderItems(listId, itemIds).catch(console.error);
+          return currentItems;
+        });
+      }
 
       touchDragId = null;
-      draggedEl = null;
+      lastHoverId = null;
       dragItem.current = null;
-      dragOverItem.current = null;
       dragGroupId.current = null;
       setDraggingId(null);
-      setDragOverId(null);
     };
 
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
@@ -379,7 +379,7 @@ export default function ListDetailPage() {
       container.removeEventListener('touchmove', handleTouchMove);
       container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [reorderMode, executeReorder]);
+  }, [reorderMode, liveDragReorder, listId]);
 
   // ─── Quick Add (favourites) ─────────────────────────────────────
   const handleQuickAdd = async (fav) => {
@@ -645,7 +645,6 @@ export default function ListDetailPage() {
                       onDragEnter={reorderMode ? handleDragEnter : undefined}
                       onDragEnd={reorderMode ? handleDragEnd : undefined}
                       isDragging={draggingId === item.id}
-                      isDragOver={dragOverId === item.id && draggingId !== item.id}
                     />
                   ))}
                 </div>
@@ -856,11 +855,11 @@ export default function ListDetailPage() {
 function ItemRow({
   item, groupId, onToggle, onDelete, onEdit,
   reorderMode, onDragStart, onDragEnter, onDragEnd,
-  isDragging, isDragOver, isChecked,
+  isDragging, isChecked,
 }) {
   const longPressTimer = useRef(null);
-  const longPressTriggered = useRef(false);
   const pointerStart = useRef(null);
+  const [pressing, setPressing] = useState(false);
 
   useEffect(() => {
     return () => clearTimeout(longPressTimer.current);
@@ -868,10 +867,10 @@ function ItemRow({
 
   const handlePointerDown = (e) => {
     if (reorderMode) return;
-    longPressTriggered.current = false;
     pointerStart.current = { x: e.clientX, y: e.clientY };
+    setPressing(true);
     longPressTimer.current = setTimeout(() => {
-      longPressTriggered.current = true;
+      setPressing(false);
       onEdit(item);
       if (navigator.vibrate) navigator.vibrate(30);
     }, 500);
@@ -884,30 +883,30 @@ function ItemRow({
     if (dx > 10 || dy > 10) {
       clearTimeout(longPressTimer.current);
       pointerStart.current = null;
+      setPressing(false);
     }
   };
 
   const handlePointerUp = () => {
     clearTimeout(longPressTimer.current);
     pointerStart.current = null;
+    setPressing(false);
   };
 
-  // In reorder mode: the whole row is a drag target, visuals are bold
-  // In normal mode: long press to edit, normal check/delete
   const dragProps = reorderMode && !isChecked ? {
     draggable: true,
     onDragStart: (e) => onDragStart(e, item, groupId),
-    onDragEnter: (e) => onDragEnter(e, item),
+    onDragEnter: (e) => onDragEnter(e, item, groupId),
     onDragEnd: onDragEnd,
     onDragOver: (e) => e.preventDefault(),
   } : {};
 
-  // Build class for the dragged item - make it really stand out
-  let rowClass = 'card px-3 py-2.5 flex items-center gap-3 group transition-all select-none';
+  let rowClass = 'card px-3 py-2.5 flex items-center gap-3 group select-none relative overflow-hidden';
+  if (pressing) {
+    rowClass += ' long-press-active';
+  }
   if (isDragging) {
-    rowClass += ' scale-[1.03] shadow-2xl ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/40 z-50 relative opacity-90';
-  } else if (isDragOver) {
-    rowClass += ' ring-2 ring-primary-300 ring-offset-2 dark:ring-offset-gray-950 bg-primary-50/50 dark:bg-primary-900/20';
+    rowClass += ' scale-[1.04] shadow-2xl ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/40 z-50 relative';
   }
 
   return (
@@ -915,6 +914,7 @@ function ItemRow({
       data-item-id={item.id}
       data-group-id={groupId}
       className={rowClass}
+      style={isDragging ? { transition: 'none' } : { transition: 'transform 150ms ease, box-shadow 150ms ease' }}
       onContextMenu={(e) => { if (!reorderMode) e.preventDefault(); }}
       {...dragProps}
     >
@@ -976,24 +976,15 @@ function ItemRow({
         </div>
       </div>
 
-      {/* Action buttons - hidden in reorder mode */}
+      {/* Delete button - hidden in reorder mode */}
       {!reorderMode && (
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button
-            onClick={() => onEdit(item)}
-            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-primary-500 p-1"
-            title="Edit"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
-          <button
-            onClick={() => onDelete(item.id)}
-            className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
-            title="Delete"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
+        <button
+          onClick={() => onDelete(item.id)}
+          className="flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
+          title="Delete"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       )}
     </div>
   );
