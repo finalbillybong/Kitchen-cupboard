@@ -16,10 +16,12 @@ A collaborative shopping list web app built for self-hosting on Docker/Unraid.
 - **Dark mode** — automatic or manual toggle
 - **Offline support** — service worker caches the app shell and API responses; mutations made offline are queued and automatically replayed when connectivity returns
 - **PWA** — installable on Android and iOS home screens with a chef hat icon
+- **Recipe import** — paste a recipe URL and extract ingredients automatically; works with any site using Schema.org JSON-LD (BBC Good Food, AllRecipes, Jamie Oliver, etc)
 - **REST API** — documented API with Bearer token auth for AI agents and integrations
 - **API keys** — create scoped keys for external tools
 - **Invite system** — control registration with invite codes
 - **Admin panel** — manage users and invite codes
+- **Security hardened** — non-root container, HSTS/CSP headers, refresh token rotation, audit logging, registration rate limiting
 
 ## Quick Start (Docker Compose)
 
@@ -65,8 +67,8 @@ Since this app uses JWT-based authentication with bcrypt password hashing, it's 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | `change-me-in-production` | JWT signing key — **must change** |
-| `REGISTRATION_ENABLED` | `true` | Set `false` to require invite codes |
+| `SECRET_KEY` | *(required)* | JWT signing key — app refuses to start without it |
+| `REGISTRATION_ENABLED` | `false` | Set `true` for open registration, `false` for invite-only |
 | `DATABASE_URL` | `sqlite:///./data/kitchen_cupboard.db` | Database connection string |
 
 ## API Documentation
