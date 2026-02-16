@@ -26,8 +26,8 @@ export default function Modal({ open, onClose, title, children }) {
       }}
     >
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative bg-white dark:bg-gray-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border border-gray-200 dark:border-gray-800 shadow-2xl max-h-[85vh] flex flex-col">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-800">
+      <div className="relative bg-white dark:bg-navy-900 w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border border-gray-200 dark:border-navy-800 shadow-2xl max-h-[85vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-navy-800">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button onClick={onClose} className="btn-ghost p-1.5">
             <X className="h-5 w-5" />

@@ -32,7 +32,7 @@ export default function SettingsPage() {
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors ${
               tab === t.id
                 ? 'bg-primary-100 dark:bg-primary-950 text-primary-700 dark:text-primary-300'
-                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-navy-800'
             }`}
           >
             <t.icon className="h-4 w-4" />
@@ -89,7 +89,7 @@ function ProfileTab() {
         <h2 className="font-semibold text-lg">Profile</h2>
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Username</label>
-          <input type="text" value={user?.username || ''} className="input bg-gray-50 dark:bg-gray-800" disabled />
+          <input type="text" value={user?.username || ''} className="input bg-gray-50 dark:bg-navy-800" disabled />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Display Name</label>
@@ -212,7 +212,7 @@ function ApiKeysTab() {
         ) : (
           <div className="space-y-2">
             {keys.map((k) => (
-              <div key={k.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <div key={k.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-navy-800 rounded-xl">
                 <div>
                   <span className="font-medium">{k.name}</span>
                   <span className="text-sm text-gray-400 ml-2">{k.key_prefix}...</span>
@@ -255,7 +255,7 @@ function ApiKeysTab() {
             Copy this key now. It won't be shown again.
           </div>
           <div className="flex items-center gap-2">
-            <code className="flex-1 bg-gray-100 dark:bg-gray-800 px-4 py-3 rounded-xl text-sm font-mono break-all">
+            <code className="flex-1 bg-gray-100 dark:bg-navy-800 px-4 py-3 rounded-xl text-sm font-mono break-all">
               {createdKey?.key}
             </code>
             <button onClick={copyKey} className="btn-secondary p-2.5 flex-shrink-0">
@@ -317,7 +317,7 @@ function CategoriesTab() {
 
       <div className="space-y-2">
         {categories.map((c) => (
-          <div key={c.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+          <div key={c.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-navy-800 rounded-xl">
             <div className="flex items-center gap-3">
               <span className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color }} />
               <span className="font-medium">{c.name}</span>
@@ -351,7 +351,7 @@ function CategoriesTab() {
               type="color"
               value={newCat.color}
               onChange={(e) => setNewCat({ ...newCat, color: e.target.value })}
-              className="w-12 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"
+              className="w-12 h-10 rounded-lg border border-gray-200 dark:border-navy-700 cursor-pointer"
             />
           </div>
           <div className="flex gap-3">
@@ -407,7 +407,7 @@ function AdminTab() {
         </div>
         <div className="space-y-2">
           {users.map((u) => (
-            <div key={u.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+            <div key={u.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-navy-800 rounded-xl">
               <div>
                 <span className="font-medium">{u.display_name || u.username}</span>
                 <span className="text-sm text-gray-400 ml-2">@{u.username}</span>
@@ -443,7 +443,7 @@ function AdminTab() {
         </p>
         <div className="space-y-2">
           {inviteCodes.map((c) => (
-            <div key={c.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+            <div key={c.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-navy-800 rounded-xl">
               <div className="flex items-center gap-2">
                 <code className="font-mono text-sm">{c.code}</code>
                 {c.is_used && <span className="text-xs text-gray-400">Used</span>}

@@ -558,13 +558,13 @@ export default function ListDetailPage() {
                 autoComplete="off"
               />
               {suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 overflow-hidden">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-navy-900 border border-gray-200 dark:border-navy-700 rounded-xl shadow-lg z-10 overflow-hidden">
                   {suggestions.map((s, i) => (
                     <button
                       key={i}
                       type="button"
                       onClick={() => applySuggestion(s)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between"
+                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-navy-800 flex items-center justify-between"
                     >
                       <span className="font-medium">{s.name}</span>
                       {s.category_name && (
@@ -639,7 +639,7 @@ export default function ListDetailPage() {
                 <button
                   key={i}
                   onClick={() => handleQuickAdd(fav)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-400 transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-navy-800 text-gray-700 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-400 transition-colors"
                 >
                   <Plus className="h-3 w-3" />
                   {fav.name}
@@ -831,7 +831,7 @@ export default function ListDetailPage() {
                   <span className="text-sm text-gray-400 ml-2">@{m.username}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs bg-gray-100 dark:bg-gray-800 text-gray-500 px-2 py-1 rounded-lg">
+                  <span className="text-xs bg-gray-100 dark:bg-navy-800 text-gray-500 px-2 py-1 rounded-lg">
                     {m.role}
                   </span>
                   {isOwner && m.role !== 'owner' && (
@@ -848,7 +848,7 @@ export default function ListDetailPage() {
           </div>
 
           {isOwner && (
-            <form onSubmit={handleShare} className="border-t border-gray-100 dark:border-gray-800 pt-4">
+            <form onSubmit={handleShare} className="border-t border-gray-100 dark:border-navy-800 pt-4">
               <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Add member</h3>
               <div className="flex gap-2">
                 <input
@@ -954,7 +954,7 @@ export default function ListDetailPage() {
                 </span>
               </div>
 
-              <div className="max-h-64 overflow-y-auto border border-gray-100 dark:border-gray-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800">
+              <div className="max-h-64 overflow-y-auto border border-gray-100 dark:border-navy-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800">
                 {recipePreview.ingredients.map((ing, i) => (
                   <div key={i} className="px-3 py-2 flex items-center justify-between text-sm">
                     <span className="font-medium">{ing.name}</span>
