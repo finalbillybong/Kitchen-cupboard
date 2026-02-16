@@ -167,9 +167,8 @@ def create_api_key(
     db.add(api_key)
     db.commit()
     db.refresh(api_key)
-    result = ApiKeyCreated.model_validate(api_key)
-    result.key = raw_key
-    return result
+    out = ApiKeyOut.model_validate(api_key)
+    return ApiKeyCreated(**out.model_dump(), key=raw_key)
 
 
 @router.get("/api-keys", response_model=list[ApiKeyOut])

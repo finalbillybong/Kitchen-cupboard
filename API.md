@@ -4,20 +4,52 @@ Kitchen Cupboard exposes a REST API for programmatic access, designed for AI age
 
 Interactive docs are available at `/api/docs` (Swagger UI) and `/api/redoc` (ReDoc) when the server is running.
 
+## AI Quick Start
+
+```bash
+# Set your variables
+API_KEY="kc_your_key_here"
+BASE="http://192.168.x.x:8111"
+AUTH="Authorization: Bearer $API_KEY"
+
+# List all shopping lists
+curl -s -H "$AUTH" $BASE/api/lists | jq '.[].name'
+
+# Get items from a list
+curl -s -H "$AUTH" $BASE/api/lists/{list_id}/items | jq '.[] | {name, checked, category_name}'
+
+# Add an item (auto-categorizes by name, e.g. "milk" → Dairy)
+curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"name": "Milk", "quantity": 2, "unit": "pints"}' \
+  $BASE/api/lists/{list_id}/items
+
+# Check off an item
+curl -s -X PUT -H "$AUTH" -H "Content-Type: application/json" \
+  -d '{"checked": true}' \
+  $BASE/api/lists/{list_id}/items/{item_id}
+
+# Delete all checked items
+curl -s -X POST -H "$AUTH" $BASE/api/lists/{list_id}/items/clear-checked
+```
+
+Create an API key via the web UI: **Settings > API Keys > Create**.
+
+---
+
 ## Authentication
 
-All API endpoints (except health check and login/register) require authentication via Bearer token.
-
-**Two authentication methods:**
+All endpoints (except health check, login, and register) require a Bearer token.
 
 | Method | Format | Use Case |
 |--------|--------|----------|
 | JWT Token | `Bearer eyJhbG...` | Web UI login sessions |
-| API Key | `Bearer kc_xxxxx` | External integrations, AI agents |
+| API Key | `Bearer kc_xxxxx` | AI agents, scripts, external tools |
 
 ```
 Authorization: Bearer <token>
 ```
+
+Both token types are interchangeable — use API keys for programmatic access.
 
 ### Getting a JWT Token
 
@@ -48,22 +80,19 @@ Response:
 }
 ```
 
-### Creating an API Key
+### API Keys
 
-API keys are created via the web UI (Settings > API Keys) or the API:
+Create via the web UI (Settings > API Keys) or the API. The full key is only shown once at creation — save it immediately.
 
 ```
 POST /api/auth/api-keys
 Authorization: Bearer <jwt_token>
 Content-Type: application/json
 
-{
-  "name": "My AI Agent",
-  "scopes": "read,write"
-}
+{"name": "My AI Agent"}
 ```
 
-Response (the full key is only shown once):
+Response:
 ```json
 {
   "id": "uuid",
@@ -76,6 +105,8 @@ Response (the full key is only shown once):
   "created_at": "2025-01-01T00:00:00"
 }
 ```
+
+> **Note:** The `scopes` field is stored but not currently enforced — all API keys have full read/write access.
 
 ---
 
@@ -288,31 +319,44 @@ Message types: `item_added`, `item_updated`, `item_checked`, `item_removed`, `ch
 
 ---
 
-## Example: AI Agent Workflow
+## Example: Python AI Agent
 
 ```python
 import requests
 
-BASE = "https://your-domain.com"
+BASE = "http://192.168.x.x:8111"
 HEADERS = {"Authorization": "Bearer kc_your_api_key_here"}
 
-# 1. Get available lists
+# Get all lists
 lists = requests.get(f"{BASE}/api/lists", headers=HEADERS).json()
-
-# 2. Add items to a list
 list_id = lists[0]["id"]
-requests.post(
-    f"{BASE}/api/lists/{list_id}/items",
-    headers={**HEADERS, "Content-Type": "application/json"},
-    json={"name": "Bananas", "quantity": 6, "unit": ""},
-)
 
-# 3. Check off an item
+# Add items to a list (auto-categorizes by name)
+for item in ["Milk", "Bread", "Chicken", "Bananas", "Eggs"]:
+    requests.post(
+        f"{BASE}/api/lists/{list_id}/items",
+        headers=HEADERS,
+        json={"name": item},
+    )
+
+# Get unchecked items
 items = requests.get(f"{BASE}/api/lists/{list_id}/items", headers=HEADERS).json()
-item_id = items[0]["id"]
+unchecked = [i for i in items if not i["checked"]]
+
+# Check off an item by name
+milk = next(i for i in items if i["name"].lower() == "milk")
 requests.put(
-    f"{BASE}/api/lists/{list_id}/items/{item_id}",
-    headers={**HEADERS, "Content-Type": "application/json"},
+    f"{BASE}/api/lists/{list_id}/items/{milk['id']}",
+    headers=HEADERS,
     json={"checked": True},
 )
+
+# Get items grouped by category
+from itertools import groupby
+items.sort(key=lambda x: x["category_name"] or "Uncategorized")
+for cat, group in groupby(items, key=lambda x: x["category_name"] or "Uncategorized"):
+    print(f"\n{cat}:")
+    for item in group:
+        status = "x" if item["checked"] else " "
+        print(f"  [{status}] {item['name']} ({item['quantity']} {item['unit']})")
 ```
