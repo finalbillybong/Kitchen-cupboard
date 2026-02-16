@@ -16,6 +16,9 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# Install gosu for entrypoint privilege drop
+RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+
 # Install dependencies
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
@@ -33,6 +36,10 @@ RUN addgroup --system --gid 1001 appuser && \
 # Create data directory for SQLite
 RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
+# Entrypoint fixes data dir permissions then drops to appuser
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 # Environment — SECRET_KEY must be provided at runtime (app refuses insecure defaults)
 ENV DATABASE_URL=sqlite:///./data/kitchen_cupboard.db
 # SECRET_KEY intentionally not set here — must be provided via docker-compose or env
@@ -41,6 +48,5 @@ EXPOSE 8000
 
 VOLUME ["/app/data"]
 
-USER appuser
-
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
