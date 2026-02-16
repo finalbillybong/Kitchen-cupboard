@@ -99,6 +99,60 @@ def get_current_user(
     )
 
 
+def _get_user_with_scope(
+    credentials: Optional[HTTPAuthorizationCredentials],
+    db: Session,
+    required_scope: str,
+) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = credentials.credentials
+
+    # JWT users have all scopes
+    user = _get_user_from_jwt(token, db)
+    if user:
+        return user
+
+    # API key users - check scope
+    result = _get_user_from_api_key(token, db)
+    if result:
+        user, api_key = result
+        scopes = [s.strip() for s in api_key.scopes.split(",")]
+        if required_scope not in scopes:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key missing required scope: {required_scope}",
+            )
+        return user
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def get_current_user_read(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """Auth that accepts API keys with at least 'read' scope."""
+    return _get_user_with_scope(credentials, db, required_scope="read")
+
+
+def get_current_user_write(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> User:
+    """Auth that requires 'write' scope for API keys."""
+    return _get_user_with_scope(credentials, db, required_scope="write")
+
+
 def get_current_admin(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(
