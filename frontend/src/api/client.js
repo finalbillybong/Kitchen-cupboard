@@ -171,6 +171,10 @@ class ApiClient {
     return this.request('/auth/invite-codes');
   }
 
+  deleteInviteCode(codeId) {
+    return this.request(`/auth/invite-codes/${codeId}`, { method: 'DELETE' });
+  }
+
   // Users (admin)
   getUsers() {
     return this.request('/auth/users');
@@ -178,6 +182,10 @@ class ApiClient {
 
   toggleUserActive(userId) {
     return this.request(`/auth/users/${userId}/toggle-active`, { method: 'PUT' });
+  }
+
+  deleteUser(userId) {
+    return this.request(`/auth/users/${userId}`, { method: 'DELETE' });
   }
 
   // Lists
