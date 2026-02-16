@@ -252,6 +252,21 @@ class ApiClient {
     });
   }
 
+  // Recipe Import
+  previewRecipeImport(listId, url) {
+    return this.request(`/lists/${listId}/items/import-recipe/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
+  importRecipe(listId, url) {
+    return this.request(`/lists/${listId}/items/import-recipe`, {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    });
+  }
+
   // Categories
   getCategories() {
     return this.request('/categories');

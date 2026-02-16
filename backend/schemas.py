@@ -228,6 +228,31 @@ class ItemSuggestion(BaseModel):
     usage_count: int
 
 
+# ─── Recipe Import ─────────────────────────────────────────────────
+
+class RecipeImportRequest(BaseModel):
+    url: str = Field(..., min_length=10, max_length=2000)
+
+
+class RecipeIngredientOut(BaseModel):
+    name: str
+    quantity: float
+    unit: str
+
+
+class RecipeImportPreview(BaseModel):
+    title: str
+    source: str
+    ingredients: list[RecipeIngredientOut]
+
+
+class RecipeImportResult(BaseModel):
+    title: str
+    source: str
+    added_count: int
+    items: list[ItemOut]
+
+
 # ─── WebSocket Messages ────────────────────────────────────────────
 
 class WSMessage(BaseModel):
