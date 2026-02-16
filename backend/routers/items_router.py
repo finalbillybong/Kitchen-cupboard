@@ -5,7 +5,7 @@ from sqlalchemy import func
 from auth import get_current_user
 from database import get_db
 from models import User, ShoppingList, ListMember, ListItem, Category, ItemCategoryMemory, utcnow
-from schemas import ItemCreate, ItemUpdate, ItemOut, ItemSuggestion
+from schemas import ItemCreate, ItemUpdate, ItemOut, ItemSuggestion, ItemReorderRequest
 from websocket_manager import manager
 
 router = APIRouter(prefix="/api/lists/{list_id}/items", tags=["List Items"])
@@ -152,6 +152,36 @@ async def create_item(
     })
 
     return result
+
+
+@router.post("/reorder", status_code=200)
+async def reorder_items(
+    list_id: str,
+    data: ItemReorderRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Batch-update sort_order for items based on their position in the list."""
+    _check_list_access(list_id, user.id, db, require_edit=True)
+
+    for index, item_id in enumerate(data.item_ids):
+        item = db.query(ListItem).filter(
+            ListItem.id == item_id, ListItem.list_id == list_id
+        ).first()
+        if item:
+            item.sort_order = index
+
+    db.commit()
+
+    await manager.broadcast_to_list(list_id, {
+        "type": "items_reordered",
+        "list_id": list_id,
+        "data": {"item_ids": data.item_ids},
+        "user_id": user.id,
+        "username": user.display_name or user.username,
+    })
+
+    return {"ok": True}
 
 
 @router.put("/{item_id}", response_model=ItemOut)
@@ -304,5 +334,40 @@ def get_suggestions(
             category_name=cat.name if cat else None,
             usage_count=m.usage_count,
         ))
+
+    return results
+
+
+# ─── Favourites (global endpoint) ────────────────────────────────
+
+favourites_router = APIRouter(prefix="/api/favourites", tags=["Favourites"])
+
+
+@favourites_router.get("", response_model=list[ItemSuggestion])
+def get_favourites(
+    limit: int = 20,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get most frequently used items across all lists."""
+    memories = db.query(ItemCategoryMemory).order_by(
+        ItemCategoryMemory.usage_count.desc()
+    ).limit(limit * 2).all()
+
+    results = []
+    seen_names = set()
+    for m in memories:
+        if m.item_name_lower in seen_names:
+            continue
+        seen_names.add(m.item_name_lower)
+        cat = db.query(Category).filter(Category.id == m.category_id).first()
+        results.append(ItemSuggestion(
+            name=m.item_name_lower.title(),
+            category_id=m.category_id,
+            category_name=cat.name if cat else None,
+            usage_count=m.usage_count,
+        ))
+        if len(results) >= limit:
+            break
 
     return results

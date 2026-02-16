@@ -17,6 +17,7 @@ from routers.categories_router import router as categories_router
 from routers.lists_router import router as lists_router
 from routers.items_router import router as items_router
 from routers.items_router import suggestions_router
+from routers.items_router import favourites_router
 
 # Ensure data directory exists
 os.makedirs("data", exist_ok=True)
@@ -69,6 +70,7 @@ app.include_router(categories_router)
 app.include_router(lists_router)
 app.include_router(items_router)
 app.include_router(suggestions_router)
+app.include_router(favourites_router)
 
 
 # ─── Health / Context ───────────────────────────────────────────────
