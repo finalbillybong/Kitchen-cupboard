@@ -39,10 +39,20 @@ class ApiClient {
       return null;
     }
 
-    const data = await response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch {
+      throw new Error(`Server error (${response.status})`);
+    }
 
     if (!response.ok) {
-      throw new Error(data.detail || 'Request failed');
+      const message = typeof data.detail === 'string'
+        ? data.detail
+        : Array.isArray(data.detail)
+          ? data.detail.map(e => e.msg || e).join(', ')
+          : 'Request failed';
+      throw new Error(message);
     }
 
     return data;
