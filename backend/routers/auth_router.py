@@ -17,7 +17,7 @@ from auth import (
 )
 from config import settings
 from database import get_db
-from models import User, ApiKey, AuditLog, InviteCode, utcnow
+from models import User, ApiKey, AuditLog, InviteCode, ShoppingList, ListMember, ListItem, ItemCategoryMemory, utcnow
 from rate_limit import login_limiter, register_limiter
 from schemas import (
     UserCreate,
@@ -314,6 +314,28 @@ def list_invite_codes(
     return [InviteCodeOut.model_validate(c) for c in codes]
 
 
+@router.delete("/invite-codes/{code_id}", status_code=204)
+def delete_invite_code(
+    code_id: str,
+    request: Request,
+    user: User = Depends(get_current_admin_jwt),
+    db: Session = Depends(get_db),
+):
+    invite = db.query(InviteCode).filter(
+        InviteCode.id == code_id,
+        InviteCode.created_by == user.id,
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite code not found")
+    if invite.is_used:
+        raise HTTPException(status_code=400, detail="Cannot delete an already-used invite code")
+    code_val = invite.code
+    db.delete(invite)
+    db.commit()
+    client_ip = request.client.host if request.client else None
+    _audit(db, "invite.deleted", user.id, f"code={code_val}", client_ip)
+
+
 # ─── Admin: User Management ────────────────────────────────────────
 
 @router.get("/users", response_model=list[UserOut])
@@ -344,3 +366,56 @@ def toggle_user_active(
     action = "user.activated" if target.is_active else "user.deactivated"
     _audit(db, action, admin.id, f"target={target.username}", client_ip)
     return UserOut.model_validate(target)
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(
+    user_id: str,
+    request: Request,
+    admin: User = Depends(get_current_admin_jwt),
+    db: Session = Depends(get_db),
+):
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    if target.is_admin:
+        raise HTTPException(status_code=400, detail="Cannot delete another admin")
+
+    username = target.username
+
+    # Nullify references in list items (added_by, checked_by)
+    db.query(ListItem).filter(ListItem.added_by == user_id).update(
+        {ListItem.added_by: admin.id}, synchronize_session=False
+    )
+    db.query(ListItem).filter(ListItem.checked_by == user_id).update(
+        {ListItem.checked_by: None}, synchronize_session=False
+    )
+
+    # Delete lists owned by this user (cascades to members + items)
+    owned_lists = db.query(ShoppingList).filter(ShoppingList.owner_id == user_id).all()
+    for sl in owned_lists:
+        db.delete(sl)
+
+    # Remove memberships on other users' lists
+    db.query(ListMember).filter(ListMember.user_id == user_id).delete(synchronize_session=False)
+
+    # Delete API keys
+    db.query(ApiKey).filter(ApiKey.user_id == user_id).delete(synchronize_session=False)
+
+    # Nullify audit log references (keep the logs for the audit trail)
+    db.query(AuditLog).filter(AuditLog.user_id == user_id).update(
+        {AuditLog.user_id: None}, synchronize_session=False
+    )
+
+    # Nullify invite code used_by references
+    db.query(InviteCode).filter(InviteCode.used_by == user_id).update(
+        {InviteCode.used_by: None}, synchronize_session=False
+    )
+
+    db.delete(target)
+    db.commit()
+
+    client_ip = request.client.host if request.client else None
+    _audit(db, "user.deleted", admin.id, f"target={username}", client_ip)

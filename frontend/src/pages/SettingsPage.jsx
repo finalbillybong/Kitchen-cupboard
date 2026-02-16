@@ -393,6 +393,26 @@ function AdminTab() {
     fetchData();
   };
 
+  const handleDeleteUser = async (userId, username) => {
+    if (!confirm(`Permanently delete user "${username}"? This will delete all their lists, items, and API keys. This cannot be undone.`)) return;
+    try {
+      await api.deleteUser(userId);
+      fetchData();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const handleDeleteInvite = async (codeId) => {
+    if (!confirm('Revoke this invite code?')) return;
+    try {
+      await api.deleteInviteCode(codeId);
+      fetchData();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
   const copyCode = (code) => {
     navigator.clipboard.writeText(code);
     setCopied(code);
@@ -413,17 +433,25 @@ function AdminTab() {
                 <span className="text-sm text-gray-400 ml-2">@{u.username}</span>
                 {u.is_admin && <span className="text-xs text-primary-500 ml-2">Admin</span>}
               </div>
-              {u.id !== currentUser?.id && (
-                <button
-                  onClick={() => handleToggleActive(u.id)}
-                  className={`text-xs font-medium px-3 py-1 rounded-lg ${
-                    u.is_active
-                      ? 'bg-green-100 dark:bg-green-950 text-green-600'
-                      : 'bg-red-100 dark:bg-red-950 text-red-600'
-                  }`}
-                >
-                  {u.is_active ? 'Active' : 'Disabled'}
-                </button>
+              {u.id !== currentUser?.id && !u.is_admin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleToggleActive(u.id)}
+                    className={`text-xs font-medium px-3 py-1 rounded-lg ${
+                      u.is_active
+                        ? 'bg-green-100 dark:bg-green-950 text-green-600'
+                        : 'bg-red-100 dark:bg-red-950 text-red-600'
+                    }`}
+                  >
+                    {u.is_active ? 'Active' : 'Disabled'}
+                  </button>
+                  <button
+                    onClick={() => handleDeleteUser(u.id, u.display_name || u.username)}
+                    className="text-red-400 hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               )}
             </div>
           ))}
@@ -449,9 +477,14 @@ function AdminTab() {
                 {c.is_used && <span className="text-xs text-gray-400">Used</span>}
               </div>
               {!c.is_used && (
-                <button onClick={() => copyCode(c.code)} className="btn-ghost p-1.5">
-                  {copied === c.code ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => copyCode(c.code)} className="btn-ghost p-1.5">
+                    {copied === c.code ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                  </button>
+                  <button onClick={() => handleDeleteInvite(c.id)} className="text-red-400 hover:text-red-500 p-1.5">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               )}
             </div>
           ))}
