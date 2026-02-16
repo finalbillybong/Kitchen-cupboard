@@ -46,7 +46,7 @@ DEFAULT_ITEM_MAPPINGS = {
         "lime", "limes", "grapes", "strawberries", "blueberries", "raspberries",
         "tomato", "tomatoes", "potato", "potatoes", "onion", "onions", "garlic",
         "carrot", "carrots", "broccoli", "spinach", "lettuce", "cucumber", "peppers",
-        "pepper", "mushrooms", "mushroom", "avocado", "avocados", "celery", "sweetcorn",
+        "bell pepper", "mushrooms", "mushroom", "avocado", "avocados", "celery", "sweetcorn",
         "corn", "peas", "green beans", "courgette", "aubergine", "cabbage", "cauliflower",
         "spring onions", "leek", "leeks", "parsnip", "parsnips", "beetroot",
         "sweet potato", "sweet potatoes", "ginger", "chilli", "kiwi", "mango",
@@ -103,7 +103,7 @@ DEFAULT_ITEM_MAPPINGS = {
     ],
     "Condiments": [
         "ketchup", "mayonnaise", "mustard", "soy sauce", "vinegar",
-        "olive oil", "vegetable oil", "salt", "pepper", "sugar",
+        "olive oil", "vegetable oil", "salt", "black pepper", "sugar",
         "flour", "stock cubes", "gravy", "herbs", "spices", "chilli flakes",
         "paprika", "cumin", "oregano", "mixed herbs",
     ],

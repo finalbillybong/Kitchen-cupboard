@@ -195,6 +195,8 @@ async def websocket_endpoint(
                 await websocket.send_text("pong")
     except WebSocketDisconnect:
         manager.disconnect(websocket, list_id)
+    except Exception:
+        manager.disconnect(websocket, list_id)
 
 
 # ─── Serve Frontend (must be last) ─────────────────────────────────
