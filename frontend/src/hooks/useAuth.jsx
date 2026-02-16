@@ -8,19 +8,41 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      api.setToken(token);
-      api.getMe()
-        .then(setUser)
-        .catch(() => {
-          api.setToken(null);
-          setUser(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
+    async function init() {
+      const token = localStorage.getItem('token');
+      if (token) {
+        api.setToken(token);
+        try {
+          setUser(await api.getMe());
+        } catch {
+          // Access token expired — try refresh
+          const refreshed = await api.tryRefresh();
+          if (refreshed) {
+            try {
+              setUser(await api.getMe());
+            } catch {
+              api.setToken(null);
+              setUser(null);
+            }
+          } else {
+            api.setToken(null);
+            setUser(null);
+          }
+        }
+      } else {
+        // No token in storage — try refresh cookie (e.g. after page reload with expired access token)
+        const refreshed = await api.tryRefresh();
+        if (refreshed) {
+          try {
+            setUser(await api.getMe());
+          } catch {
+            api.setToken(null);
+          }
+        }
+      }
       setLoading(false);
     }
+    init();
   }, []);
 
   const login = useCallback(async (username, password) => {
@@ -37,8 +59,8 @@ export function AuthProvider({ children }) {
     return data.user;
   }, []);
 
-  const logout = useCallback(() => {
-    api.setToken(null);
+  const logout = useCallback(async () => {
+    await api.logout();
     setUser(null);
   }, []);
 

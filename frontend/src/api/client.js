@@ -29,7 +29,28 @@ class ApiClient {
       headers,
     });
 
-    if (response.status === 401) {
+    if (response.status === 401 && !options._isRetry) {
+      // Try refreshing the token before giving up
+      const refreshed = await this.tryRefresh();
+      if (refreshed) {
+        headers['Authorization'] = `Bearer ${this.token}`;
+        const retry = await fetch(`${API_BASE}${path}`, {
+          ...options,
+          headers,
+          _isRetry: true,
+        });
+        if (retry.status !== 401) {
+          if (retry.status === 204) return null;
+          const retryData = await retry.json().catch(() => null);
+          if (retry.ok) return retryData;
+          const msg = retryData?.detail || 'Request failed';
+          throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+        }
+      }
+      this.setToken(null);
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    } else if (response.status === 401) {
       this.setToken(null);
       window.location.href = '/login';
       throw new Error('Unauthorized');
@@ -56,6 +77,31 @@ class ApiClient {
     }
 
     return data;
+  }
+
+  async tryRefresh() {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      if (!res.ok) return false;
+      const data = await res.json();
+      this.setToken(data.access_token);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async logout() {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+    } catch { /* ignore */ }
+    this.setToken(null);
   }
 
   // Auth

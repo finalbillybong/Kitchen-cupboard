@@ -43,3 +43,36 @@ class RateLimiter:
 
 
 login_limiter = RateLimiter()
+
+
+class RegisterRateLimiter:
+    def __init__(self):
+        self._attempts: dict[str, list[float]] = defaultdict(list)
+        self._lock = Lock()
+
+    def is_rate_limited(self, key: str) -> bool:
+        now = time.time()
+        window = settings.REGISTER_RATE_LIMIT_WINDOW
+        max_attempts = settings.REGISTER_RATE_LIMIT_MAX
+
+        with self._lock:
+            self._attempts[key] = [
+                t for t in self._attempts[key] if now - t < window
+            ]
+            return len(self._attempts[key]) >= max_attempts
+
+    def record_attempt(self, key: str):
+        with self._lock:
+            self._attempts[key].append(time.time())
+
+    def remaining_seconds(self, key: str) -> int:
+        now = time.time()
+        window = settings.REGISTER_RATE_LIMIT_WINDOW
+        with self._lock:
+            attempts = [t for t in self._attempts[key] if now - t < window]
+            if not attempts:
+                return 0
+            return int(window - (now - attempts[0])) + 1
+
+
+register_limiter = RegisterRateLimiter()

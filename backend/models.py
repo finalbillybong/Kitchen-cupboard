@@ -151,6 +151,18 @@ class ApiKey(Base):
     user = relationship("User", back_populates="api_keys")
 
 
+class AuditLog(Base):
+    """Records security-relevant actions for auditing."""
+    __tablename__ = "audit_log"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=True)
+    action = Column(String(100), nullable=False, index=True)
+    detail = Column(Text, default="")
+    ip_address = Column(String(45), nullable=True)
+    created_at = Column(DateTime, default=utcnow, index=True)
+
+
 class InviteCode(Base):
     __tablename__ = "invite_codes"
 

@@ -5,7 +5,8 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
@@ -34,6 +35,12 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
+def create_refresh_token(user_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode = {"sub": user_id, "type": "refresh", "exp": expire}
+    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+
 def generate_api_key() -> str:
     return "kc_" + secrets.token_urlsafe(32)
 
@@ -48,9 +55,23 @@ def _get_user_from_jwt(token: str, db: Session) -> Optional[User]:
         user_id: str = payload.get("sub")
         if user_id is None:
             return None
+        # Reject refresh tokens used as access tokens
+        if payload.get("type") == "refresh":
+            return None
         user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
         return user
-    except JWTError:
+    except PyJWTError:
+        return None
+
+
+def verify_refresh_token(token: str) -> Optional[str]:
+    """Verify a refresh token and return the user_id if valid."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
+        return payload.get("sub")
+    except PyJWTError:
         return None
 
 
