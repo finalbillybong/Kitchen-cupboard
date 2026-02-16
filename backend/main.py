@@ -106,12 +106,6 @@ def ai_context(db: Session = Depends(get_db)):
             "Item suggestions based on history",
         ],
         "endpoints": {
-            "auth": {
-                "POST /api/auth/login": "Login with username/password, returns JWT",
-                "POST /api/auth/register": "Register new account",
-                "GET /api/auth/me": "Get current user info",
-                "POST /api/auth/api-keys": "Create API key for programmatic access",
-            },
             "lists": {
                 "GET /api/lists": "Get all lists for current user",
                 "POST /api/lists": "Create a new list",
