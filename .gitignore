@@ -1,0 +1,9 @@
+node_modules/
+data/
+*.db
+__pycache__/
+*.pyc
+.env
+backend/static/
+frontend/node_modules/
+dist/

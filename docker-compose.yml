@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  kitchen-cupboard:
+    build: .
+    container_name: kitchen-cupboard
+    restart: unless-stopped
+    ports:
+      - "8111:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # IMPORTANT: Change this to a long random string in production
+      # Generate one with: python -c "import secrets; print(secrets.token_urlsafe(64))"
+      - SECRET_KEY=change-me-in-production
+      # Set to "false" to require invite codes for registration
+      - REGISTRATION_ENABLED=true
