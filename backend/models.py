@@ -141,7 +141,7 @@ class ApiKey(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     key_hash = Column(String(255), nullable=False)
-    key_prefix = Column(String(10), nullable=False)  # first 8 chars for identification
+    key_prefix = Column(String(11), nullable=False)  # "kc_" + first 8 chars
     name = Column(String(100), nullable=False)
     scopes = Column(Text, default="read,write")  # comma-separated
     is_active = Column(Boolean, default=True)

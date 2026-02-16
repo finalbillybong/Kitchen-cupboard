@@ -1,6 +1,6 @@
-"""Seed the database with default categories."""
+"""Seed the database with default categories and keyword mappings."""
 from sqlalchemy.orm import Session
-from models import Category
+from models import Category, ItemCategoryMemory
 
 DEFAULT_CATEGORIES = [
     {"name": "Fruit & Veg", "icon": "apple", "color": "#22c55e", "sort_order": 1},
@@ -33,4 +33,99 @@ def seed_categories(db: Session):
             is_default=True,
         )
         db.add(cat)
+    db.commit()
+
+    # Seed default keyword mappings for auto-categorization
+    _seed_category_memory(db)
+
+
+# Common items mapped to their default category name
+DEFAULT_ITEM_MAPPINGS = {
+    "Fruit & Veg": [
+        "apple", "apples", "banana", "bananas", "orange", "oranges", "lemon", "lemons",
+        "lime", "limes", "grapes", "strawberries", "blueberries", "raspberries",
+        "tomato", "tomatoes", "potato", "potatoes", "onion", "onions", "garlic",
+        "carrot", "carrots", "broccoli", "spinach", "lettuce", "cucumber", "peppers",
+        "pepper", "mushrooms", "mushroom", "avocado", "avocados", "celery", "sweetcorn",
+        "corn", "peas", "green beans", "courgette", "aubergine", "cabbage", "cauliflower",
+        "spring onions", "leek", "leeks", "parsnip", "parsnips", "beetroot",
+        "sweet potato", "sweet potatoes", "ginger", "chilli", "kiwi", "mango",
+        "pineapple", "melon", "watermelon", "pear", "pears", "plum", "plums",
+        "peach", "peaches", "cherries", "fruit", "veg", "vegetables", "salad",
+    ],
+    "Dairy": [
+        "milk", "semi-skimmed milk", "skimmed milk", "whole milk", "oat milk",
+        "almond milk", "cheese", "cheddar", "mozzarella", "parmesan", "cream cheese",
+        "butter", "cream", "double cream", "single cream", "sour cream",
+        "yoghurt", "yogurt", "greek yoghurt", "eggs", "egg",
+    ],
+    "Meat & Fish": [
+        "chicken", "chicken breast", "chicken thighs", "beef", "mince", "steak",
+        "pork", "pork chops", "bacon", "sausages", "sausage", "ham", "lamb",
+        "turkey", "duck", "salmon", "tuna", "cod", "prawns", "fish", "fish fingers",
+        "chicken nuggets", "burgers",
+    ],
+    "Bakery": [
+        "bread", "white bread", "brown bread", "wholemeal bread", "sourdough",
+        "rolls", "bread rolls", "baguette", "croissant", "croissants", "muffins",
+        "bagels", "bagel", "wraps", "tortillas", "pitta", "pitta bread",
+        "crumpets", "pancakes", "scones",
+    ],
+    "Frozen": [
+        "frozen peas", "frozen chips", "ice cream", "frozen pizza", "frozen veg",
+        "fish fingers", "frozen berries", "ice lollies", "frozen prawns",
+    ],
+    "Drinks": [
+        "water", "juice", "orange juice", "apple juice", "squash", "cola", "coke",
+        "lemonade", "beer", "wine", "tea", "coffee", "hot chocolate",
+    ],
+    "Snacks": [
+        "crisps", "chocolate", "biscuits", "nuts", "popcorn", "cereal bars",
+        "sweets", "cake", "cookies",
+    ],
+    "Household": [
+        "washing up liquid", "bin bags", "kitchen roll", "cling film", "tin foil",
+        "sponges", "bleach", "cleaning spray", "laundry detergent", "fabric softener",
+        "dishwasher tablets", "toilet roll", "toilet paper", "batteries", "light bulbs",
+    ],
+    "Personal Care": [
+        "shampoo", "conditioner", "shower gel", "soap", "toothpaste", "toothbrush",
+        "deodorant", "razors", "tissues", "cotton buds", "plasters",
+    ],
+    "Tinned & Jars": [
+        "baked beans", "chopped tomatoes", "tinned tuna", "soup", "tinned soup",
+        "jam", "honey", "peanut butter", "nutella", "olives", "pickles",
+        "coconut milk", "tinned sweetcorn",
+    ],
+    "Pasta & Rice": [
+        "pasta", "spaghetti", "penne", "fusilli", "rice", "basmati rice",
+        "noodles", "egg noodles", "couscous", "lasagne sheets",
+    ],
+    "Condiments": [
+        "ketchup", "mayonnaise", "mustard", "soy sauce", "vinegar",
+        "olive oil", "vegetable oil", "salt", "pepper", "sugar",
+        "flour", "stock cubes", "gravy", "herbs", "spices", "chilli flakes",
+        "paprika", "cumin", "oregano", "mixed herbs",
+    ],
+}
+
+
+def _seed_category_memory(db: Session):
+    existing = db.query(ItemCategoryMemory).count()
+    if existing > 0:
+        return
+
+    categories = {cat.name: cat.id for cat in db.query(Category).filter(Category.is_default == True).all()}
+
+    for cat_name, items in DEFAULT_ITEM_MAPPINGS.items():
+        cat_id = categories.get(cat_name)
+        if not cat_id:
+            continue
+        for item_name in items:
+            memory = ItemCategoryMemory(
+                item_name_lower=item_name.lower(),
+                category_id=cat_id,
+                usage_count=1,
+            )
+            db.add(memory)
     db.commit()
