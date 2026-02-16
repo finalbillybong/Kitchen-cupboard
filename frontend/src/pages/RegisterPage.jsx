@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { ChefHat, Eye, EyeOff } from 'lucide-react';
@@ -15,6 +15,14 @@ export default function RegisterPage() {
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [inviteRequired, setInviteRequired] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/registration-status')
+      .then(r => r.json())
+      .then(data => setInviteRequired(data.invite_required))
+      .catch(() => {});
+  }, []);
 
   const update = (field) => (e) => setForm({ ...form, [field]: e.target.value });
 
@@ -118,14 +126,18 @@ export default function RegisterPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Invite Code <span className="text-gray-400">(if required)</span>
+              Invite Code {inviteRequired
+                ? <span className="text-red-500">*</span>
+                : <span className="text-gray-400">(if required)</span>
+              }
             </label>
             <input
               type="text"
               value={form.inviteCode}
               onChange={update('inviteCode')}
               className="input"
-              placeholder="Optional"
+              required={inviteRequired}
+              placeholder={inviteRequired ? 'Enter your invite code' : 'Optional'}
             />
           </div>
 

@@ -74,13 +74,12 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
         is_admin=is_first_user,
     )
     db.add(user)
+    db.flush()  # generate user.id before referencing it
 
     # Mark invite code as used
     if not is_first_user and not settings.REGISTRATION_ENABLED and data.invite_code:
-        invite = db.query(InviteCode).filter(InviteCode.code == data.invite_code).first()
-        if invite:
-            invite.is_used = True
-            invite.used_by = user.id
+        invite.is_used = True
+        invite.used_by = user.id
 
     db.commit()
     db.refresh(user)
