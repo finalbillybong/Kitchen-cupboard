@@ -1,7 +1,7 @@
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from auth import (
@@ -16,6 +16,7 @@ from auth import (
 from config import settings
 from database import get_db
 from models import User, ApiKey, InviteCode
+from rate_limit import login_limiter
 from schemas import (
     UserCreate,
     UserLogin,
@@ -89,9 +90,20 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(data: UserLogin, db: Session = Depends(get_db)):
+def login(data: UserLogin, request: Request, db: Session = Depends(get_db)):
+    # Rate limit by client IP
+    client_ip = request.client.host if request.client else "unknown"
+    if login_limiter.is_rate_limited(client_ip):
+        remaining = login_limiter.remaining_seconds(client_ip)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many login attempts. Try again in {remaining} seconds.",
+            headers={"Retry-After": str(remaining)},
+        )
+
     user = db.query(User).filter(User.username == data.username).first()
     if not user or not verify_password(data.password, user.password_hash):
+        login_limiter.record_attempt(client_ip)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")

@@ -10,8 +10,9 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      # IMPORTANT: Change this to a long random string in production
+      # REQUIRED: Must be a long random string. The app will refuse to start without it.
       # Generate one with: python -c "import secrets; print(secrets.token_urlsafe(64))"
-      - SECRET_KEY=change-me-in-production
-      # Set to "false" to require invite codes for registration
-      - REGISTRATION_ENABLED=true
+      - SECRET_KEY=YOUR_SECRET_KEY_HERE
+      # Registration is disabled by default (invite codes required).
+      # Set to "true" only for initial setup, then disable.
+      - REGISTRATION_ENABLED=false

@@ -29,9 +29,9 @@ COPY --from=frontend-build /app/backend/static ./static
 # Create data directory for SQLite
 RUN mkdir -p /app/data
 
-# Environment
+# Environment — SECRET_KEY must be provided at runtime (app refuses insecure defaults)
 ENV DATABASE_URL=sqlite:///./data/kitchen_cupboard.db
-ENV SECRET_KEY=change-me-in-production
+# SECRET_KEY intentionally not set here — must be provided via docker-compose or env
 
 EXPOSE 8000
 

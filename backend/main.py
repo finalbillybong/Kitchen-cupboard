@@ -1,6 +1,7 @@
 import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from jose import JWTError, jwt
@@ -31,10 +32,35 @@ db.close()
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
+    # Swagger/OpenAPI docs require authentication via the UI;
+    # disable the public JSON schema endpoint to avoid leaking API structure
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
 )
+
+# ─── CORS ───────────────────────────────────────────────────────────
+# Restrict to same-origin only. The frontend is served from the same
+# host, so no cross-origin requests are needed. API keys used by
+# external tools (curl, Python) are not subject to CORS.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[],  # No cross-origin allowed by default
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
+
+# ─── Security headers ──────────────────────────────────────────────
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    return response
 
 # ─── Routers ────────────────────────────────────────────────────────
 
@@ -139,7 +165,7 @@ async def websocket_endpoint(
     # Verify list access
     db = next(get_db())
     try:
-        user = db.query(User).filter(User.id == user_id).first()
+        user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
         if not user:
             await websocket.close(code=4001)
             return
@@ -179,7 +205,9 @@ if os.path.exists(static_dir):
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        file_path = os.path.join(static_dir, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
+        # Resolve the path and ensure it stays within static_dir (prevent traversal)
+        resolved = os.path.realpath(os.path.join(static_dir, full_path))
+        static_real = os.path.realpath(static_dir)
+        if resolved.startswith(static_real + os.sep) and os.path.isfile(resolved):
+            return FileResponse(resolved)
         return FileResponse(os.path.join(static_dir, "index.html"))
