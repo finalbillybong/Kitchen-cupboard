@@ -5,7 +5,11 @@ from sqlalchemy import func
 from auth import get_current_user
 from database import get_db
 from models import User, ShoppingList, ListMember, ListItem, Category, ItemCategoryMemory, utcnow
-from schemas import ItemCreate, ItemUpdate, ItemOut, ItemSuggestion, ItemReorderRequest
+from schemas import (
+    ItemCreate, ItemUpdate, ItemOut, ItemSuggestion, ItemReorderRequest,
+    RecipeImportRequest, RecipeImportPreview, RecipeImportResult,
+)
+from recipe_parser import fetch_recipe
 from websocket_manager import manager
 
 router = APIRouter(prefix="/api/lists/{list_id}/items", tags=["List Items"])
@@ -298,6 +302,99 @@ async def clear_checked_items(
     })
 
     return {"deleted_count": deleted}
+
+
+# ─── Recipe Import ─────────────────────────────────────────────────
+
+@router.post("/import-recipe/preview", response_model=RecipeImportPreview)
+async def preview_recipe_import(
+    list_id: str,
+    data: RecipeImportRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fetch a recipe URL and return parsed ingredients for preview before importing."""
+    _check_list_access(list_id, user.id, db, require_edit=True)
+    try:
+        recipe = await fetch_recipe(data.url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Failed to fetch or parse the recipe URL.")
+    return RecipeImportPreview(**recipe)
+
+
+@router.post("/import-recipe", response_model=RecipeImportResult, status_code=201)
+async def import_recipe(
+    list_id: str,
+    data: RecipeImportRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fetch a recipe URL, parse ingredients, and add them all to the list."""
+    _check_list_access(list_id, user.id, db, require_edit=True)
+    try:
+        recipe = await fetch_recipe(data.url)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Failed to fetch or parse the recipe URL.")
+
+    added_items = []
+    max_sort = db.query(func.max(ListItem.sort_order)).filter(
+        ListItem.list_id == list_id
+    ).scalar() or 0
+
+    for i, ing in enumerate(recipe["ingredients"]):
+        # Auto-suggest category from memory
+        category_id = None
+        memory = db.query(ItemCategoryMemory).filter(
+            ItemCategoryMemory.item_name_lower == ing["name"].strip().lower()
+        ).order_by(ItemCategoryMemory.usage_count.desc()).first()
+        if memory:
+            category_id = memory.category_id
+
+        item = ListItem(
+            list_id=list_id,
+            name=ing["name"],
+            quantity=ing["quantity"],
+            unit=ing["unit"],
+            category_id=category_id,
+            added_by=user.id,
+            notes=f"From recipe: {recipe['title']}",
+            sort_order=max_sort + i + 1,
+        )
+        db.add(item)
+        added_items.append(item)
+
+    # Update list timestamp
+    lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
+    if lst:
+        lst.updated_at = utcnow()
+
+    db.commit()
+
+    result_items = []
+    for item in added_items:
+        db.refresh(item)
+        result_items.append(_item_to_out(item, db))
+
+    # Notify WebSocket subscribers about all new items
+    for result in result_items:
+        await manager.broadcast_to_list(list_id, {
+            "type": "item_added",
+            "list_id": list_id,
+            "data": result.model_dump(mode="json"),
+            "user_id": user.id,
+            "username": user.display_name or user.username,
+        })
+
+    return RecipeImportResult(
+        title=recipe["title"],
+        source=recipe["source"],
+        added_count=len(result_items),
+        items=result_items,
+    )
 
 
 # ─── Item Suggestions (global endpoint) ────────────────────────────
