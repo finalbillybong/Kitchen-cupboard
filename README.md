@@ -9,11 +9,15 @@ A collaborative shopping list web app built for self-hosting on Docker/Unraid.
 - **Smart categories** — items auto-categorize based on history (13 default categories + custom)
 - **Item memory** — remembers category assignments so you don't have to re-categorize every time
 - **Item suggestions** — autocomplete from previously added items
+- **Item editing** — long press any item to edit its name, category, quantity, unit, and notes
+- **Drag-and-drop reorder** — toggle reorder mode to rearrange items within each category group; items shift in real-time as you drag
+- **Favourites quick-add** — quickly add your most-used items from a favourites bar based on usage history
 - **Sharing** — share lists with other users as editor or viewer
 - **Dark mode** — automatic or manual toggle
+- **Offline support** — service worker caches the app shell and API responses; mutations made offline are queued and automatically replayed when connectivity returns
+- **PWA** — installable on Android and iOS home screens with a chef hat icon
 - **REST API** — documented API with Bearer token auth for AI agents and integrations
 - **API keys** — create scoped keys for external tools
-- **PWA support** — installable on mobile devices
 - **Invite system** — control registration with invite codes
 - **Admin panel** — manage users and invite codes
 
@@ -77,4 +81,5 @@ Since this app uses JWT-based authentication with bcrypt password hashing, it's 
 - **Frontend**: React 18, Vite, Tailwind CSS
 - **Auth**: JWT + bcrypt, API keys
 - **Real-time**: WebSocket
+- **Offline**: Service worker with IndexedDB mutation queue
 - **Container**: Docker (single container, multi-stage build)
