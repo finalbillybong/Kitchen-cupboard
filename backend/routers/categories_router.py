@@ -51,6 +51,10 @@ def update_category(
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
         raise HTTPException(status_code=404, detail="Category not found")
+    if cat.is_default:
+        raise HTTPException(status_code=403, detail="Cannot modify default categories")
+    if cat.created_by and cat.created_by != user.id:
+        raise HTTPException(status_code=403, detail="Can only modify your own categories")
 
     if data.name is not None:
         cat.name = data.name
@@ -77,5 +81,7 @@ def delete_category(
         raise HTTPException(status_code=404, detail="Category not found")
     if cat.is_default:
         raise HTTPException(status_code=400, detail="Cannot delete default categories")
+    if cat.created_by and cat.created_by != user.id:
+        raise HTTPException(status_code=403, detail="Can only delete your own categories")
     db.delete(cat)
     db.commit()

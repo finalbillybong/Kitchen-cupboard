@@ -126,7 +126,7 @@ class ListOut(BaseModel):
 
 class ListShareCreate(BaseModel):
     username: str
-    role: str = "editor"  # editor or viewer
+    role: str = Field("editor", pattern="^(editor|viewer)$")
 
 
 # ─── Items ──────────────────────────────────────────────────────────
@@ -151,7 +151,7 @@ class ItemUpdate(BaseModel):
 
 
 class ItemReorderRequest(BaseModel):
-    item_ids: list[str]
+    item_ids: list[str] = Field(..., max_length=1000)
 
 
 class ItemOut(BaseModel):

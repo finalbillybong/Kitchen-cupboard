@@ -26,8 +26,12 @@ COPY backend/ .
 # Copy built frontend
 COPY --from=frontend-build /app/backend/static ./static
 
+# Create non-root user
+RUN addgroup --system --gid 1001 appuser && \
+    adduser --system --uid 1001 --ingroup appuser appuser
+
 # Create data directory for SQLite
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
 # Environment — SECRET_KEY must be provided at runtime (app refuses insecure defaults)
 ENV DATABASE_URL=sqlite:///./data/kitchen_cupboard.db
@@ -36,5 +40,7 @@ ENV DATABASE_URL=sqlite:///./data/kitchen_cupboard.db
 EXPOSE 8000
 
 VOLUME ["/app/data"]
+
+USER appuser
 
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
