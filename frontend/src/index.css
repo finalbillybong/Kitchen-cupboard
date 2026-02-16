@@ -62,6 +62,27 @@
   100% { transform: scale(1); }
 }
 
+/* Long press fill animation */
+.long-press-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(99 102 241 / 0.08);
+  border-radius: inherit;
+  transform-origin: left;
+  animation: long-press-fill 500ms linear forwards;
+  pointer-events: none;
+}
+
+.dark .long-press-active::after {
+  background: rgb(99 102 241 / 0.18);
+}
+
+@keyframes long-press-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
 /* Drag and drop highlight (touch) */
 .drag-over-highlight {
   @apply ring-2 ring-primary-400 ring-offset-1 dark:ring-offset-gray-950;
