@@ -1,0 +1,54 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>KitchenCupboard</Name>
+  <Repository>finalbillybong/kitchen-cupboard</Repository>
+  <Registry>https://hub.docker.com/r/finalbillybong/kitchen-cupboard</Registry>
+  <Branch>
+    <Tag>latest</Tag>
+    <TagDescription>Latest stable release</TagDescription>
+  </Branch>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/finalbillybong/Kitchen-cupboard/issues</Support>
+  <Project>https://github.com/finalbillybong/Kitchen-cupboard</Project>
+  <Overview>Kitchen Cupboard is a collaborative, self-hosted shopping list app. Features include real-time multi-user collaboration via WebSocket, smart auto-categorization, recipe import from popular cooking sites, offline PWA support, and a clean mobile-first UI. Perfect for families and households who want a private, shared shopping list without relying on cloud services.</Overview>
+  <Category>HomeAutomation: Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/unraid/kitchen-cupboard.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/frontend/public/icon-512.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <Description>Kitchen Cupboard is a collaborative, self-hosted shopping list app. Features include real-time multi-user collaboration via WebSocket, smart auto-categorization, recipe import from popular cooking sites, offline PWA support, and a clean mobile-first UI. Perfect for families and households who want a private, shared shopping list without relying on cloud services.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8111</HostPort>
+        <ContainerPort>8000</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/kitchen-cupboard</HostDir>
+      <ContainerDir>/app/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value>**CHANGE_ME**</Value>
+      <Name>SECRET_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>false</Value>
+      <Name>REGISTRATION_ENABLED</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Config Name="Web UI Port" Target="8000" Default="8111" Mode="tcp" Description="Port for the web interface." Type="Port" Display="always" Required="true" Mask="false">8111</Config>
+  <Config Name="Data Path" Target="/app/data" Default="/mnt/user/appdata/kitchen-cupboard" Mode="rw" Description="Path to store the SQLite database and application data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/kitchen-cupboard</Config>
+  <Config Name="Secret Key" Target="SECRET_KEY" Default="**CHANGE_ME**" Description="REQUIRED: A long random string used for JWT signing. Generate with: python -c 'import secrets; print(secrets.token_urlsafe(64))'. The app will not start without this." Type="Variable" Display="always" Required="true" Mask="true">**CHANGE_ME**</Config>
+  <Config Name="Registration Enabled" Target="REGISTRATION_ENABLED" Default="false" Description="Set to 'true' to allow open registration. Default is 'false' (invite-only mode). Enable temporarily for initial setup, then disable." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+</Container>
