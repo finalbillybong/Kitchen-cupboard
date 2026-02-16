@@ -149,7 +149,7 @@ export default function ListsPage() {
                   type="button"
                   onClick={() => setNewList({ ...newList, color })}
                   className={`w-8 h-8 rounded-full transition-transform ${
-                    newList.color === color ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900 scale-110' : ''
+                    newList.color === color ? 'ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-navy-900 scale-110' : ''
                   }`}
                   style={{ backgroundColor: color }}
                 />

@@ -9,9 +9,9 @@ export default function Layout() {
   const location = useLocation();
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-navy-950">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-navy-900/80 backdrop-blur-lg border-b border-gray-200 dark:border-navy-800">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 text-primary-600 dark:text-primary-400">
             <ChefHat className="h-7 w-7" />
@@ -22,7 +22,7 @@ export default function Layout() {
             <Link
               to="/"
               className={`btn-ghost flex items-center gap-2 text-sm ${
-                location.pathname === '/' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950' : ''
+                location.pathname === '/' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/40' : ''
               }`}
             >
               <ShoppingCart className="h-4 w-4" />
@@ -31,7 +31,7 @@ export default function Layout() {
             <Link
               to="/settings"
               className={`btn-ghost flex items-center gap-2 text-sm ${
-                location.pathname === '/settings' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950' : ''
+                location.pathname === '/settings' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/40' : ''
               }`}
             >
               <Settings className="h-4 w-4" />
