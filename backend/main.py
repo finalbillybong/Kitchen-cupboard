@@ -1,0 +1,185 @@
+import os
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from jose import JWTError, jwt
+from sqlalchemy.orm import Session
+
+from config import settings
+from database import engine, get_db, Base
+from models import User, ListMember, ShoppingList
+from seed import seed_categories
+from websocket_manager import manager
+from routers.auth_router import router as auth_router
+from routers.categories_router import router as categories_router
+from routers.lists_router import router as lists_router
+from routers.items_router import router as items_router
+from routers.items_router import suggestions_router
+
+# Ensure data directory exists
+os.makedirs("data", exist_ok=True)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# Seed default categories
+db = next(get_db())
+seed_categories(db)
+db.close()
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+)
+
+# ─── Routers ────────────────────────────────────────────────────────
+
+app.include_router(auth_router)
+app.include_router(categories_router)
+app.include_router(lists_router)
+app.include_router(items_router)
+app.include_router(suggestions_router)
+
+
+# ─── Health / Context ───────────────────────────────────────────────
+
+@app.get("/api/", tags=["Health"])
+def health():
+    return {
+        "status": "ok",
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+    }
+
+
+@app.get("/api/context", tags=["AI Context"])
+def ai_context(db: Session = Depends(get_db)):
+    """
+    AI-friendly context endpoint (inspired by ClawBridge).
+    Returns a summary of available API capabilities for AI agents.
+    """
+    return {
+        "app": settings.APP_NAME,
+        "version": settings.APP_VERSION,
+        "description": "Kitchen Cupboard is a collaborative shopping list application.",
+        "authentication": {
+            "type": "Bearer token",
+            "methods": ["JWT (login)", "API key (kc_xxx)"],
+            "header": "Authorization: Bearer <token>",
+        },
+        "capabilities": [
+            "Create and manage multiple shopping lists",
+            "Add, edit, check off, and remove items",
+            "Categorize items (auto-remembers categories)",
+            "Share lists with other users (editor/viewer roles)",
+            "Real-time collaboration via WebSocket",
+            "Item suggestions based on history",
+        ],
+        "endpoints": {
+            "auth": {
+                "POST /api/auth/login": "Login with username/password, returns JWT",
+                "POST /api/auth/register": "Register new account",
+                "GET /api/auth/me": "Get current user info",
+                "POST /api/auth/api-keys": "Create API key for programmatic access",
+            },
+            "lists": {
+                "GET /api/lists": "Get all lists for current user",
+                "POST /api/lists": "Create a new list",
+                "GET /api/lists/{id}": "Get list details",
+                "PUT /api/lists/{id}": "Update a list",
+                "DELETE /api/lists/{id}": "Delete a list (owner only)",
+                "POST /api/lists/{id}/share": "Share list with another user",
+            },
+            "items": {
+                "GET /api/lists/{id}/items": "Get all items in a list",
+                "POST /api/lists/{id}/items": "Add item to list",
+                "PUT /api/lists/{id}/items/{item_id}": "Update an item",
+                "DELETE /api/lists/{id}/items/{item_id}": "Remove an item",
+                "POST /api/lists/{id}/items/clear-checked": "Clear checked items",
+            },
+            "categories": {
+                "GET /api/categories": "List all categories",
+                "POST /api/categories": "Create custom category",
+                "PUT /api/categories/{id}": "Update a category",
+                "DELETE /api/categories/{id}": "Delete custom category",
+            },
+            "suggestions": {
+                "GET /api/suggestions?q=": "Get item suggestions by name prefix",
+            },
+            "websocket": {
+                "WS /ws/{list_id}?token=": "Real-time updates for a list",
+            },
+        },
+    }
+
+
+# ─── WebSocket ──────────────────────────────────────────────────────
+
+@app.websocket("/ws/{list_id}")
+async def websocket_endpoint(
+    websocket: WebSocket,
+    list_id: str,
+    token: str = Query(...),
+):
+    # Authenticate
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=4001)
+            return
+    except JWTError:
+        await websocket.close(code=4001)
+        return
+
+    # Verify list access
+    db = next(get_db())
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            await websocket.close(code=4001)
+            return
+
+        lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
+        if not lst:
+            await websocket.close(code=4004)
+            return
+
+        has_access = lst.owner_id == user_id or db.query(ListMember).filter(
+            ListMember.list_id == list_id,
+            ListMember.user_id == user_id,
+        ).first() is not None
+
+        if not has_access:
+            await websocket.close(code=4003)
+            return
+    finally:
+        db.close()
+
+    await manager.connect(websocket, list_id)
+    try:
+        while True:
+            # Keep connection alive; client sends pings
+            data = await websocket.receive_text()
+            if data == "ping":
+                await websocket.send_text("pong")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, list_id)
+
+
+# ─── Serve Frontend (must be last) ─────────────────────────────────
+
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(static_dir, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(static_dir, "index.html"))
