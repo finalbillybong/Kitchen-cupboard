@@ -1,12 +1,10 @@
-from datetime import datetime, timezone
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from auth import get_current_user
 from database import get_db
-from models import User, ShoppingList, ListMember, ListItem, Category, ItemCategoryMemory
+from models import User, ShoppingList, ListMember, ListItem, Category, ItemCategoryMemory, utcnow
 from schemas import ItemCreate, ItemUpdate, ItemOut, ItemSuggestion
 from websocket_manager import manager
 
@@ -78,7 +76,7 @@ def _update_category_memory(item_name: str, category_id: str, db: Session):
     ).first()
     if memory:
         memory.usage_count += 1
-        memory.last_used = datetime.now(timezone.utc)
+        memory.last_used = utcnow()
     else:
         memory = ItemCategoryMemory(
             item_name_lower=name_lower,
@@ -137,7 +135,7 @@ async def create_item(
     # Update list timestamp
     lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
     if lst:
-        lst.updated_at = datetime.now(timezone.utc)
+        lst.updated_at = utcnow()
 
     db.commit()
     db.refresh(item)
@@ -184,7 +182,7 @@ async def update_item(
         item.checked = data.checked
         if data.checked:
             item.checked_by = user.id
-            item.checked_at = datetime.now(timezone.utc)
+            item.checked_at = utcnow()
         else:
             item.checked_by = None
             item.checked_at = None
@@ -193,12 +191,12 @@ async def update_item(
     if data.sort_order is not None:
         item.sort_order = data.sort_order
 
-    item.updated_at = datetime.now(timezone.utc)
+    item.updated_at = utcnow()
 
     # Update list timestamp
     lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
     if lst:
-        lst.updated_at = datetime.now(timezone.utc)
+        lst.updated_at = utcnow()
 
     db.commit()
     db.refresh(item)
@@ -236,7 +234,7 @@ async def delete_item(
 
     lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
     if lst:
-        lst.updated_at = datetime.now(timezone.utc)
+        lst.updated_at = utcnow()
 
     db.commit()
 

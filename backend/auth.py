@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import get_db
-from models import User, ApiKey
+from models import User, ApiKey, utcnow
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer(auto_error=False)
@@ -64,7 +64,7 @@ def _get_user_from_api_key(token: str, db: Session) -> Optional[tuple[User, ApiK
     user = db.query(User).filter(User.id == api_key.user_id, User.is_active == True).first()
     if user is None:
         return None
-    api_key.last_used = datetime.now(timezone.utc)
+    api_key.last_used = utcnow()
     db.commit()
     return user, api_key
 
