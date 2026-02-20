@@ -9,6 +9,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -215,8 +216,6 @@ async def fetch_recipe(url: str) -> dict:
     ingredients = [parse_ingredient(ing) for ing in raw_ingredients if ing.strip()]
     title = recipe_data.get("name", "Imported Recipe")
 
-    # Extract domain for source
-    from urllib.parse import urlparse
     source = urlparse(url).netloc.removeprefix("www.")
 
     return {

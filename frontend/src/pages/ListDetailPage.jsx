@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
@@ -444,13 +444,13 @@ export default function ListDetailPage() {
     setRecipeError('');
   };
 
-  // Group items by category
-  const groupedItems = () => {
-    const unchecked = items.filter((i) => !i.checked);
-    const checked = items.filter((i) => i.checked);
+  // Group items by category (memoized to avoid recalculating on every render)
+  const { sortedGroups, checked } = useMemo(() => {
+    const uncheckedItems = items.filter((i) => !i.checked);
+    const checkedItems = items.filter((i) => i.checked);
 
     const groups = {};
-    for (const item of unchecked) {
+    for (const item of uncheckedItems) {
       const key = item.category_id || 'uncategorized';
       if (!groups[key]) {
         groups[key] = {
@@ -469,14 +469,14 @@ export default function ListDetailPage() {
       );
     }
 
-    const sortedGroups = Object.values(groups).sort((a, b) => {
+    const sorted = Object.values(groups).sort((a, b) => {
       if (a.id === 'uncategorized') return 1;
       if (b.id === 'uncategorized') return -1;
       return a.name.localeCompare(b.name);
     });
 
-    return { sortedGroups, checked };
-  };
+    return { sortedGroups: sorted, checked: checkedItems };
+  }, [items]);
 
   if (loading) {
     return (
@@ -488,7 +488,6 @@ export default function ListDetailPage() {
 
   if (!list) return null;
 
-  const { sortedGroups, checked } = groupedItems();
   const isOwner = list.owner_id === user?.id;
 
   const itemNamesLower = new Set(items.map((i) => i.name.toLowerCase()));
