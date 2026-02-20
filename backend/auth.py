@@ -85,8 +85,9 @@ def _get_user_from_api_key(token: str, db: Session) -> Optional[tuple[User, ApiK
     user = db.query(User).filter(User.id == api_key.user_id, User.is_active == True).first()
     if user is None:
         return None
+    # Update last_used without committing; the caller's transaction will persist it.
     api_key.last_used = utcnow()
-    db.commit()
+    db.flush()
     return user, api_key
 
 
