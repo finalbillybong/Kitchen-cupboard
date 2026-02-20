@@ -50,6 +50,5 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.version.outputs.tags }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
           platforms: linux/amd64
