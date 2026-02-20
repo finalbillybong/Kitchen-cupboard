@@ -235,10 +235,14 @@ async def fetch_recipe(url: str) -> dict:
 
     # Extract ingredients
     raw_ingredients = recipe_data.get("recipeIngredient", [])
+    # Some sites serve recipeIngredient as a single comma-separated string
+    # instead of a list. Normalise to a list to avoid iterating characters.
+    if isinstance(raw_ingredients, str):
+        raw_ingredients = [s.strip() for s in raw_ingredients.split(",") if s.strip()]
     if not raw_ingredients:
         raise ValueError("Recipe found but no ingredients listed.")
 
-    ingredients = [parse_ingredient(ing) for ing in raw_ingredients if ing.strip()]
+    ingredients = [parse_ingredient(ing) for ing in raw_ingredients if isinstance(ing, str) and len(ing.strip()) > 1]
     title = recipe_data.get("name", "Imported Recipe")
 
     source = urlparse(url).netloc.removeprefix("www.")
