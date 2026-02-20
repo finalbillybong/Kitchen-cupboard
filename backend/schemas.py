@@ -253,6 +253,41 @@ class RecipeImportResult(BaseModel):
     items: list[ItemOut]
 
 
+# ─── Push Notifications ────────────────────────────────────────────
+
+class PushSubscriptionKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionCreate(BaseModel):
+    endpoint: str = Field(..., min_length=10, max_length=2000)
+    keys: PushSubscriptionKeys
+
+
+class NotificationPreferenceOut(BaseModel):
+    push_enabled: bool
+    notify_item_added: bool
+    notify_item_checked: bool
+    notify_item_updated: bool
+    notify_item_removed: bool
+    notify_list_shared: bool
+    notify_checked_cleared: bool
+
+    class Config:
+        from_attributes = True
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    push_enabled: Optional[bool] = None
+    notify_item_added: Optional[bool] = None
+    notify_item_checked: Optional[bool] = None
+    notify_item_updated: Optional[bool] = None
+    notify_item_removed: Optional[bool] = None
+    notify_list_shared: Optional[bool] = None
+    notify_checked_cleared: Optional[bool] = None
+
+
 # ─── WebSocket Messages ────────────────────────────────────────────
 
 class WSMessage(BaseModel):

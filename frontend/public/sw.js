@@ -198,3 +198,50 @@ self.addEventListener('message', (event) => {
     replayOfflineQueue();
   }
 });
+
+// ─── Push Notifications ────────────────────────────────────────
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    payload = { title: 'Kitchen Cupboard', body: event.data.text() };
+  }
+
+  const options = {
+    body: payload.body || '',
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: payload.tag || 'default',
+    renotify: true,
+    data: payload.data || {},
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title || 'Kitchen Cupboard', options)
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const url = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      // Try to focus an existing window and navigate it
+      for (const client of clients) {
+        if (client.url.includes(self.location.origin)) {
+          client.focus();
+          client.postMessage({ type: 'navigate', url });
+          return;
+        }
+      }
+      // No existing window - open a new one
+      return self.clients.openWindow(url);
+    })
+  );
+});

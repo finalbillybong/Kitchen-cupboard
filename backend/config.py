@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     REGISTER_RATE_LIMIT_MAX: int = 5
     APP_NAME: str = "Kitchen Cupboard"
     APP_VERSION: str = "1.0.0"
+    VAPID_PRIVATE_KEY: str = ""  # Auto-generated on first startup if empty
+    VAPID_PUBLIC_KEY: str = ""   # Auto-generated on first startup if empty
+    VAPID_CLAIMS_EMAIL: str = "mailto:admin@kitchencupboard.local"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

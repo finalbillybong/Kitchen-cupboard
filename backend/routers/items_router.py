@@ -11,6 +11,7 @@ from schemas import (
     RecipeImportRequest, RecipeImportPreview, RecipeImportResult,
 )
 from recipe_parser import fetch_recipe
+from push_service import send_push_for_list_event
 from websocket_manager import manager
 
 router = APIRouter(prefix="/api/lists/{list_id}/items", tags=["List Items"])
@@ -77,8 +78,8 @@ def _lookup_category(item_name: str, db: Session) -> str | None:
     return memory.category_id if memory else None
 
 
-async def _broadcast(list_id: str, msg_type: str, data: dict, user: User):
-    """Send a WebSocket broadcast to all subscribers of a list."""
+async def _broadcast(list_id: str, msg_type: str, data: dict, user: User, db: Session | None = None):
+    """Send a WebSocket broadcast and push notifications to list subscribers."""
     await manager.broadcast_to_list(list_id, {
         "type": msg_type,
         "list_id": list_id,
@@ -86,6 +87,8 @@ async def _broadcast(list_id: str, msg_type: str, data: dict, user: User):
         "user_id": user.id,
         "username": user.display_name or user.username,
     })
+    if db is not None:
+        send_push_for_list_event(list_id, msg_type, data, user, db)
 
 
 def _touch_list(list_id: str, db: Session):
@@ -145,7 +148,7 @@ async def create_item(
 
     item = _load_item(item.id, list_id, db)
     result = _item_to_out(item)
-    await _broadcast(list_id, "item_added", result.model_dump(mode="json"), user)
+    await _broadcast(list_id, "item_added", result.model_dump(mode="json"), user, db)
     return result
 
 
@@ -213,7 +216,7 @@ async def update_item(
     result = _item_to_out(item)
 
     msg_type = "item_checked" if data.checked is not None else "item_updated"
-    await _broadcast(list_id, msg_type, result.model_dump(mode="json"), user)
+    await _broadcast(list_id, msg_type, result.model_dump(mode="json"), user, db)
     return result
 
 
@@ -235,7 +238,7 @@ async def delete_item(
     _touch_list(list_id, db)
     db.commit()
 
-    await _broadcast(list_id, "item_removed", {"id": item_id}, user)
+    await _broadcast(list_id, "item_removed", {"id": item_id}, user, db)
 
 
 @router.post("/clear-checked", status_code=200)
@@ -250,7 +253,7 @@ async def clear_checked_items(
     ).delete(synchronize_session=False)
     db.commit()
 
-    await _broadcast(list_id, "checked_cleared", {"deleted_count": deleted}, user)
+    await _broadcast(list_id, "checked_cleared", {"deleted_count": deleted}, user, db)
     return {"deleted_count": deleted}
 
 
@@ -319,7 +322,7 @@ async def import_recipe(
         result_items.append(_item_to_out(loaded))
 
     for result in result_items:
-        await _broadcast(list_id, "item_added", result.model_dump(mode="json"), user)
+        await _broadcast(list_id, "item_added", result.model_dump(mode="json"), user, db)
 
     return RecipeImportResult(
         title=recipe["title"],
