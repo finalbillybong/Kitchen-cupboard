@@ -2,6 +2,8 @@ name: Build and Push Docker Image
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v*"
   workflow_dispatch:
@@ -26,14 +28,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Compute tags
         id: version
         run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
             echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
             echo "tags=${DOCKER_IMAGE}:${VERSION},${DOCKER_IMAGE}:latest" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            echo "version=main" >> "$GITHUB_OUTPUT"
+            echo "tags=${DOCKER_IMAGE}:latest" >> "$GITHUB_OUTPUT"
           else
+            # For manual runs or other branches
             echo "version=dev" >> "$GITHUB_OUTPUT"
             echo "tags=${DOCKER_IMAGE}:dev" >> "$GITHUB_OUTPUT"
           fi
