@@ -116,6 +116,10 @@ class ListItem(Base):
     added_by_user = relationship("User", foreign_keys=[added_by])
     checked_by_user = relationship("User", foreign_keys=[checked_by])
 
+    __table_args__ = (
+        Index("ix_list_items_list_sort", "list_id", "checked", "sort_order"),
+    )
+
 
 class ItemCategoryMemory(Base):
     """Remembers which category an item name was assigned to."""

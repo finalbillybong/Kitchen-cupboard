@@ -3,11 +3,17 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { useWebSocket } from '../hooks/useWebSocket';
+import { useRecipeImport } from '../hooks/useRecipeImport';
+import { useDragReorder } from '../hooks/useDragReorder';
 import Modal from '../components/Modal';
+import ShareModal from '../components/ShareModal';
+import RecipeImportModal from '../components/RecipeImportModal';
+import FavouritesBar from '../components/FavouritesBar';
+import ItemAddForm from '../components/ItemAddForm';
 import {
-  ArrowLeft, Plus, Trash2, Check, X, Settings2,
-  ChevronDown, ChevronRight, MoreHorizontal, UserPlus, Archive, Search,
-  GripVertical, Star, ArrowUpDown, BookOpen, Loader2, ExternalLink,
+  ArrowLeft, Trash2, Check, Settings2,
+  ChevronDown, ChevronRight, UserPlus, Archive, Search,
+  GripVertical, ArrowUpDown, BookOpen,
 } from 'lucide-react';
 
 export default function ListDetailPage() {
@@ -19,20 +25,9 @@ export default function ListDetailPage() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Add item
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemQty, setNewItemQty] = useState('1');
-  const [newItemUnit, setNewItemUnit] = useState('');
-  const [newItemCat, setNewItemCat] = useState('');
-  const [suggestions, setSuggestions] = useState([]);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const addInputRef = useRef(null);
-
   // Modals
   const [showShareModal, setShowShareModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
-  const [shareUsername, setShareUsername] = useState('');
-  const [shareRole, setShareRole] = useState('editor');
 
   // Edit item modal (long press)
   const [editItem, setEditItem] = useState(null);
@@ -44,26 +39,12 @@ export default function ListDetailPage() {
   // Collapsed categories
   const [collapsed, setCollapsed] = useState({});
 
-  // Reorder mode
-  const [reorderMode, setReorderMode] = useState(false);
-
-  // Drag and drop
-  const dragItem = useRef(null);
-  const dragGroupId = useRef(null);
-  const [draggingId, setDraggingId] = useState(null);
-  const itemsContainerRef = useRef(null);
-
-  // Recipe import
-  const [showRecipeModal, setShowRecipeModal] = useState(false);
-  const [recipeUrl, setRecipeUrl] = useState('');
-  const [recipePreview, setRecipePreview] = useState(null);
-  const [recipeLoading, setRecipeLoading] = useState(false);
-  const [recipeError, setRecipeError] = useState('');
-  const [recipeImporting, setRecipeImporting] = useState(false);
-
   // Favourites
   const [favourites, setFavourites] = useState([]);
-  const [showFavourites, setShowFavourites] = useState(false);
+
+  // Custom hooks
+  const recipe = useRecipeImport(listId);
+  const drag = useDragReorder(listId, setItems);
 
   const fetchData = useCallback(async () => {
     try {
@@ -125,46 +106,6 @@ export default function ListDetailPage() {
 
   useWebSocket(listId, handleWsMessage);
 
-  // Suggestions
-  useEffect(() => {
-    if (newItemName.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const data = await api.getSuggestions(newItemName);
-        setSuggestions(data);
-      } catch (e) {
-        // ignore
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [newItemName]);
-
-  const handleAddItem = async (e) => {
-    e.preventDefault();
-    if (!newItemName.trim()) return;
-    try {
-      const item = await api.createItem(listId, {
-        name: newItemName.trim(),
-        quantity: parseFloat(newItemQty) || 1,
-        unit: newItemUnit,
-        category_id: newItemCat || null,
-      });
-      setItems((prev) => [...prev, item]);
-      setNewItemName('');
-      setNewItemQty('1');
-      setNewItemUnit('');
-      setNewItemCat('');
-      setSuggestions([]);
-      setShowAdvanced(false);
-      addInputRef.current?.focus();
-    } catch (e) {
-      alert(e.message);
-    }
-  };
-
   const handleToggleCheck = async (item) => {
     const updated = await api.updateItem(listId, item.id, { checked: !item.checked });
     setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
@@ -178,27 +119,6 @@ export default function ListDetailPage() {
   const handleClearChecked = async () => {
     await api.clearChecked(listId);
     setItems((prev) => prev.filter((i) => !i.checked));
-  };
-
-  const handleShare = async (e) => {
-    e.preventDefault();
-    try {
-      await api.shareList(listId, shareUsername, shareRole);
-      setShareUsername('');
-      setShowShareModal(false);
-      fetchData();
-    } catch (e) {
-      alert(e.message);
-    }
-  };
-
-  const handleRemoveMember = async (userId) => {
-    try {
-      await api.unshareList(listId, userId);
-      fetchData();
-    } catch (e) {
-      alert(e.message);
-    }
   };
 
   const handleDeleteList = async () => {
@@ -220,11 +140,25 @@ export default function ListDetailPage() {
     }
   };
 
-  const applySuggestion = (suggestion) => {
-    setNewItemName(suggestion.name);
-    if (suggestion.category_id) setNewItemCat(suggestion.category_id);
-    setSuggestions([]);
-    addInputRef.current?.focus();
+  const handleQuickAdd = async (fav) => {
+    try {
+      const item = await api.createItem(listId, {
+        name: fav.name,
+        quantity: 1,
+        unit: '',
+        category_id: fav.category_id || null,
+      });
+      setItems((prev) => [...prev, item]);
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+
+  const handleRecipeImport = async () => {
+    const importedItems = await recipe.handleRecipeImport();
+    if (importedItems) {
+      setItems((prev) => [...prev, ...importedItems]);
+    }
   };
 
   // ─── Edit Item (long press) ───────────────────────────────────
@@ -256,192 +190,6 @@ export default function ListDetailPage() {
     } catch (e) {
       alert(e.message);
     }
-  };
-
-  // ─── Live Drag Reorder ─────────────────────────────────────────
-  // Immediately moves the dragged item to the target position in state,
-  // so the list visually rearranges as you drag.
-  const liveDragReorder = useCallback((targetItemId, groupId) => {
-    const draggedId = dragItem.current;
-    if (!draggedId || draggedId === targetItemId) return;
-
-    setItems((prev) => {
-      const groupItems = prev
-        .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
-        .sort((a, b) => a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at));
-
-      const fromIdx = groupItems.findIndex((i) => i.id === draggedId);
-      const toIdx = groupItems.findIndex((i) => i.id === targetItemId);
-      if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return prev;
-
-      const reordered = [...groupItems];
-      const [moved] = reordered.splice(fromIdx, 1);
-      reordered.splice(toIdx, 0, moved);
-
-      const orderMap = {};
-      reordered.forEach((item, idx) => { orderMap[item.id] = idx; });
-
-      return prev.map((item) =>
-        orderMap[item.id] !== undefined ? { ...item, sort_order: orderMap[item.id] } : item
-      );
-    });
-  }, []);
-
-  const handleDragStart = (e, item, groupId) => {
-    dragItem.current = item.id;
-    dragGroupId.current = groupId;
-    setDraggingId(item.id);
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', '');
-  };
-
-  const handleDragEnter = (e, item, groupId) => {
-    e.preventDefault();
-    liveDragReorder(item.id, groupId);
-  };
-
-  const handleDragEnd = () => {
-    // Persist the current order to backend
-    const groupId = dragGroupId.current;
-    if (groupId) {
-      setItems((currentItems) => {
-        const groupItems = currentItems
-          .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
-          .sort((a, b) => a.sort_order - b.sort_order);
-        const itemIds = groupItems.map((i) => i.id);
-        api.reorderItems(listId, itemIds).catch(console.error);
-        return currentItems;
-      });
-    }
-
-    dragItem.current = null;
-    dragGroupId.current = null;
-    setDraggingId(null);
-  };
-
-  // Touch-based drag and drop (reorder mode)
-  useEffect(() => {
-    if (!reorderMode) return;
-    const container = itemsContainerRef.current;
-    if (!container) return;
-
-    let touchDragId = null;
-    let lastHoverId = null;
-
-    const handleTouchStart = (e) => {
-      const grip = e.target.closest('[data-drag-handle]');
-      if (!grip) return;
-      const row = grip.closest('[data-item-id]');
-      if (!row) return;
-
-      touchDragId = row.dataset.itemId;
-      lastHoverId = null;
-      dragItem.current = touchDragId;
-      dragGroupId.current = row.dataset.groupId;
-      setDraggingId(touchDragId);
-    };
-
-    const handleTouchMove = (e) => {
-      if (!touchDragId) return;
-      e.preventDefault();
-
-      const touch = e.touches[0];
-      const el = document.elementFromPoint(touch.clientX, touch.clientY);
-      const row = el?.closest('[data-item-id]');
-
-      if (row && row.dataset.itemId !== touchDragId && row.dataset.itemId !== lastHoverId) {
-        lastHoverId = row.dataset.itemId;
-        liveDragReorder(row.dataset.itemId, row.dataset.groupId);
-      }
-    };
-
-    const handleTouchEnd = () => {
-      if (!touchDragId) return;
-
-      // Persist
-      const groupId = dragGroupId.current;
-      if (groupId) {
-        setItems((currentItems) => {
-          const groupItems = currentItems
-            .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
-            .sort((a, b) => a.sort_order - b.sort_order);
-          const itemIds = groupItems.map((i) => i.id);
-          api.reorderItems(listId, itemIds).catch(console.error);
-          return currentItems;
-        });
-      }
-
-      touchDragId = null;
-      lastHoverId = null;
-      dragItem.current = null;
-      dragGroupId.current = null;
-      setDraggingId(null);
-    };
-
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
-    container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd);
-
-    return () => {
-      container.removeEventListener('touchstart', handleTouchStart);
-      container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
-    };
-  }, [reorderMode, liveDragReorder, listId]);
-
-  // ─── Quick Add (favourites) ─────────────────────────────────────
-  const handleQuickAdd = async (fav) => {
-    try {
-      const item = await api.createItem(listId, {
-        name: fav.name,
-        quantity: 1,
-        unit: '',
-        category_id: fav.category_id || null,
-      });
-      setItems((prev) => [...prev, item]);
-    } catch (e) {
-      alert(e.message);
-    }
-  };
-
-  // ─── Recipe Import ──────────────────────────────────────────────
-  const handleRecipePreview = async (e) => {
-    e.preventDefault();
-    if (!recipeUrl.trim()) return;
-    setRecipeError('');
-    setRecipePreview(null);
-    setRecipeLoading(true);
-    try {
-      const preview = await api.previewRecipeImport(listId, recipeUrl.trim());
-      setRecipePreview(preview);
-    } catch (err) {
-      setRecipeError(err.message || 'Failed to fetch recipe');
-    } finally {
-      setRecipeLoading(false);
-    }
-  };
-
-  const handleRecipeImport = async () => {
-    setRecipeImporting(true);
-    setRecipeError('');
-    try {
-      const result = await api.importRecipe(listId, recipeUrl.trim());
-      setItems((prev) => [...prev, ...result.items]);
-      setShowRecipeModal(false);
-      setRecipeUrl('');
-      setRecipePreview(null);
-    } catch (err) {
-      setRecipeError(err.message || 'Failed to import recipe');
-    } finally {
-      setRecipeImporting(false);
-    }
-  };
-
-  const closeRecipeModal = () => {
-    setShowRecipeModal(false);
-    setRecipeUrl('');
-    setRecipePreview(null);
-    setRecipeError('');
   };
 
   // Group items by category (memoized to avoid recalculating on every render)
@@ -507,20 +255,19 @@ export default function ListDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-1">
-          {/* Reorder toggle */}
           <button
-            onClick={() => setReorderMode(!reorderMode)}
+            onClick={() => drag.setReorderMode(!drag.reorderMode)}
             className={`p-2 rounded-xl transition-all font-medium text-sm flex items-center gap-1.5 ${
-              reorderMode
+              drag.reorderMode
                 ? 'bg-primary-600 text-white shadow-md'
                 : 'btn-ghost'
             }`}
-            title={reorderMode ? 'Done reordering' : 'Reorder items'}
+            title={drag.reorderMode ? 'Done reordering' : 'Reorder items'}
           >
             <ArrowUpDown className="h-4 w-4" />
-            {reorderMode && <span>Done</span>}
+            {drag.reorderMode && <span>Done</span>}
           </button>
-          <button onClick={() => setShowRecipeModal(true)} className="btn-ghost p-2" title="Import recipe">
+          <button onClick={recipe.openRecipeModal} className="btn-ghost p-2" title="Import recipe">
             <BookOpen className="h-5 w-5" />
           </button>
           <button onClick={() => setShowShareModal(true)} className="btn-ghost p-2" title="Share">
@@ -535,7 +282,7 @@ export default function ListDetailPage() {
       </div>
 
       {/* Reorder mode banner */}
-      {reorderMode && (
+      {drag.reorderMode && (
         <div className="mb-4 px-4 py-2.5 rounded-xl bg-primary-50 dark:bg-primary-950/40 border border-primary-200 dark:border-primary-800 text-primary-700 dark:text-primary-300 text-sm font-medium flex items-center gap-2">
           <GripVertical className="h-4 w-4 flex-shrink-0" />
           Drag items to reorder. Tap <strong>Done</strong> when finished.
@@ -543,115 +290,17 @@ export default function ListDetailPage() {
       )}
 
       {/* Add Item Form */}
-      {!reorderMode && (
-        <form onSubmit={handleAddItem} className="card p-3 mb-4">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <input
-                ref={addInputRef}
-                type="text"
-                value={newItemName}
-                onChange={(e) => setNewItemName(e.target.value)}
-                className="input"
-                placeholder="Add an item..."
-                autoComplete="off"
-              />
-              {suggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-navy-900 border border-gray-200 dark:border-navy-700 rounded-xl shadow-lg z-10 overflow-hidden">
-                  {suggestions.map((s, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => applySuggestion(s)}
-                      className="w-full text-left px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-navy-800 flex items-center justify-between"
-                    >
-                      <span className="font-medium">{s.name}</span>
-                      {s.category_name && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500">{s.category_name}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="btn-ghost p-2.5"
-            >
-              <MoreHorizontal className="h-5 w-5" />
-            </button>
-            <button type="submit" className="btn-primary px-4">
-              <Plus className="h-5 w-5" />
-            </button>
-          </div>
-
-          {showAdvanced && (
-            <div className="flex gap-2 mt-2 flex-wrap">
-              <input
-                type="number"
-                value={newItemQty}
-                onChange={(e) => setNewItemQty(e.target.value)}
-                className="input w-20"
-                placeholder="Qty"
-                min="0"
-                step="any"
-              />
-              <input
-                type="text"
-                value={newItemUnit}
-                onChange={(e) => setNewItemUnit(e.target.value)}
-                className="input w-24"
-                placeholder="Unit"
-              />
-              <select
-                value={newItemCat}
-                onChange={(e) => setNewItemCat(e.target.value)}
-                className="input flex-1 min-w-[140px]"
-              >
-                <option value="">Auto category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-        </form>
+      {!drag.reorderMode && (
+        <ItemAddForm
+          listId={listId}
+          categories={categories}
+          onItemAdded={(item) => setItems((prev) => [...prev, item])}
+        />
       )}
 
       {/* Favourites / Quick Add */}
-      {!reorderMode && availableFavourites.length > 0 && (
-        <div className="mb-4">
-          <button
-            onClick={() => setShowFavourites(!showFavourites)}
-            className="flex items-center gap-1.5 text-sm font-medium text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 mb-2"
-          >
-            <Star className="h-3.5 w-3.5" />
-            Quick add
-            {showFavourites ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          </button>
-          {showFavourites && (
-            <div className="flex gap-2 flex-wrap">
-              {availableFavourites.slice(0, 12).map((fav, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleQuickAdd(fav)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 dark:bg-navy-800 text-gray-700 dark:text-gray-300 hover:bg-primary-50 hover:text-primary-700 dark:hover:bg-primary-900/30 dark:hover:text-primary-400 transition-colors"
-                >
-                  <Plus className="h-3 w-3" />
-                  {fav.name}
-                  {fav.category_name && (
-                    <span className="text-xs text-gray-400 dark:text-gray-500">
-                      {fav.category_name}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+      {!drag.reorderMode && (
+        <FavouritesBar favourites={availableFavourites} onQuickAdd={handleQuickAdd} />
       )}
 
       {/* Items grouped by category */}
@@ -661,7 +310,7 @@ export default function ListDetailPage() {
           <p className="text-gray-400 dark:text-gray-500">No items yet. Add something above!</p>
         </div>
       ) : (
-        <div className="space-y-4" ref={itemsContainerRef}>
+        <div className="space-y-4" ref={drag.itemsContainerRef}>
           {sortedGroups.map((group) => (
             <div key={group.id}>
               <button
@@ -690,11 +339,11 @@ export default function ListDetailPage() {
                       onToggle={handleToggleCheck}
                       onDelete={handleDeleteItem}
                       onEdit={openEditModal}
-                      reorderMode={reorderMode}
-                      onDragStart={reorderMode ? handleDragStart : undefined}
-                      onDragEnter={reorderMode ? handleDragEnter : undefined}
-                      onDragEnd={reorderMode ? handleDragEnd : undefined}
-                      isDragging={draggingId === item.id}
+                      reorderMode={drag.reorderMode}
+                      onDragStart={drag.reorderMode ? drag.handleDragStart : undefined}
+                      onDragEnter={drag.reorderMode ? drag.handleDragEnter : undefined}
+                      onDragEnd={drag.reorderMode ? drag.handleDragEnd : undefined}
+                      isDragging={drag.draggingId === item.id}
                     />
                   ))}
                 </div>
@@ -819,59 +468,14 @@ export default function ListDetailPage() {
       </Modal>
 
       {/* Share Modal */}
-      <Modal open={showShareModal} onClose={() => setShowShareModal(false)} title="Share List">
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Members</h3>
-            {list.members.map((m) => (
-              <div key={m.id} className="flex items-center justify-between py-2">
-                <div>
-                  <span className="font-medium">{m.display_name || m.username}</span>
-                  <span className="text-sm text-gray-400 ml-2">@{m.username}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xs bg-gray-100 dark:bg-navy-800 text-gray-500 px-2 py-1 rounded-lg">
-                    {m.role}
-                  </span>
-                  {isOwner && m.role !== 'owner' && (
-                    <button
-                      onClick={() => handleRemoveMember(m.user_id)}
-                      className="text-red-400 hover:text-red-500"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {isOwner && (
-            <form onSubmit={handleShare} className="border-t border-gray-100 dark:border-navy-800 pt-4">
-              <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Add member</h3>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={shareUsername}
-                  onChange={(e) => setShareUsername(e.target.value)}
-                  className="input flex-1"
-                  placeholder="Username"
-                  required
-                />
-                <select
-                  value={shareRole}
-                  onChange={(e) => setShareRole(e.target.value)}
-                  className="input w-28"
-                >
-                  <option value="editor">Editor</option>
-                  <option value="viewer">Viewer</option>
-                </select>
-                <button type="submit" className="btn-primary">Add</button>
-              </div>
-            </form>
-          )}
-        </div>
-      </Modal>
+      <ShareModal
+        open={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        list={list}
+        listId={listId}
+        isOwner={isOwner}
+        onDataChange={fetchData}
+      />
 
       {/* Settings Modal */}
       <Modal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} title="List Settings">
@@ -900,96 +504,18 @@ export default function ListDetailPage() {
       </Modal>
 
       {/* Recipe Import Modal */}
-      <Modal open={showRecipeModal} onClose={closeRecipeModal} title="Import from Recipe">
-        <div className="space-y-4">
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Paste a recipe URL and we'll extract the ingredients. Works with most recipe sites (BBC Good Food, AllRecipes, Jamie Oliver, etc).
-          </p>
-
-          <form onSubmit={handleRecipePreview}>
-            <div className="flex gap-2">
-              <input
-                type="url"
-                value={recipeUrl}
-                onChange={(e) => setRecipeUrl(e.target.value)}
-                className="input flex-1"
-                placeholder="https://www.bbcgoodfood.com/recipes/..."
-                required
-                autoFocus
-              />
-              <button
-                type="submit"
-                className="btn-primary px-4 flex items-center gap-2"
-                disabled={recipeLoading}
-              >
-                {recipeLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Search className="h-4 w-4" />
-                )}
-                {recipeLoading ? 'Fetching...' : 'Fetch'}
-              </button>
-            </div>
-          </form>
-
-          {recipeError && (
-            <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
-              {recipeError}
-            </div>
-          )}
-
-          {recipePreview && (
-            <div className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-base">{recipePreview.title}</h3>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
-                    <ExternalLink className="h-3 w-3" />
-                    {recipePreview.source}
-                  </p>
-                </div>
-                <span className="text-xs font-medium bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 px-2 py-1 rounded-lg whitespace-nowrap">
-                  {recipePreview.ingredients.length} items
-                </span>
-              </div>
-
-              <div className="max-h-64 overflow-y-auto border border-gray-100 dark:border-navy-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800">
-                {recipePreview.ingredients.map((ing, i) => (
-                  <div key={i} className="px-3 py-2 flex items-center justify-between text-sm">
-                    <span className="font-medium">{ing.name}</span>
-                    <span className="text-gray-400 dark:text-gray-500 text-xs">
-                      {ing.quantity !== 1 || ing.unit ? `${ing.quantity}${ing.unit ? ' ' + ing.unit : ''}` : ''}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-3 pt-1">
-                <button
-                  type="button"
-                  onClick={closeRecipeModal}
-                  className="btn-secondary flex-1"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRecipeImport}
-                  className="btn-primary flex-1 flex items-center justify-center gap-2"
-                  disabled={recipeImporting}
-                >
-                  {recipeImporting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                  {recipeImporting ? 'Adding...' : `Add ${recipePreview.ingredients.length} items`}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </Modal>
+      <RecipeImportModal
+        open={recipe.showRecipeModal}
+        onClose={recipe.closeRecipeModal}
+        recipeUrl={recipe.recipeUrl}
+        setRecipeUrl={recipe.setRecipeUrl}
+        recipePreview={recipe.recipePreview}
+        recipeLoading={recipe.recipeLoading}
+        recipeError={recipe.recipeError}
+        recipeImporting={recipe.recipeImporting}
+        onPreview={recipe.handleRecipePreview}
+        onImport={handleRecipeImport}
+      />
     </div>
   );
 }
