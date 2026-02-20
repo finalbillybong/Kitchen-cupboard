@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
 import Modal from '../components/Modal';
-import { Plus, ShoppingCart, Archive, Users, ChevronRight, Package } from 'lucide-react';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import PullToRefresh from '../components/PullToRefresh';
+import { Plus, ShoppingCart, Archive, Users, ChevronRight, Package, Eye, EyeOff } from 'lucide-react';
 
 const LIST_COLORS = [
   '#6366f1', '#ec4899', '#f59e0b', '#22c55e', '#3b82f6',
@@ -15,21 +17,24 @@ export default function ListsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newList, setNewList] = useState({ name: '', description: '', color: '#6366f1' });
   const [creating, setCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
 
-  const fetchLists = async () => {
+  const fetchLists = useCallback(async () => {
     try {
-      const data = await api.getLists();
+      const data = await api.getLists(showArchived);
       setLists(data);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  };
+  }, [showArchived]);
 
   useEffect(() => {
     fetchLists();
-  }, []);
+  }, [fetchLists]);
+
+  const ptr = usePullToRefresh(fetchLists);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -56,12 +61,25 @@ export default function ListsPage() {
 
   return (
     <div>
+      <PullToRefresh {...ptr} />
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">My Lists</h1>
-        <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
-          <Plus className="h-4 w-4" />
-          <span>New List</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowArchived(!showArchived)}
+            className={`btn-ghost flex items-center gap-1.5 text-sm ${
+              showArchived ? 'text-primary-600 dark:text-primary-400' : ''
+            }`}
+            title={showArchived ? 'Hide archived' : 'Show archived'}
+          >
+            {showArchived ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            <span className="hidden sm:inline">{showArchived ? 'Hide archived' : 'Show archived'}</span>
+          </button>
+          <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            <span>New List</span>
+          </button>
+        </div>
       </div>
 
       {lists.length === 0 ? (

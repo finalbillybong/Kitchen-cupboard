@@ -1,4 +1,4 @@
-# Kitchen Cupboard
+# Kitchen Cupboard beta
 
 A collaborative shopping list web app built for self-hosting on Docker/Unraid.
 

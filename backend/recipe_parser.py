@@ -5,10 +5,13 @@ Supports any site that embeds <script type="application/ld+json"> with @type: Re
 including BBC Good Food, AllRecipes, Delish, Simply Recipes, Jamie Oliver, NYT Cooking, etc.
 """
 
+import ipaddress
 import json
 import re
+import socket
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -162,6 +165,27 @@ def parse_ingredient(text: str) -> ParsedIngredient:
     return ParsedIngredient(name=name, quantity=round(quantity, 3), unit=unit)
 
 
+def _validate_url(url: str):
+    """Block requests to private/loopback/link-local addresses (SSRF protection)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http and https URLs are supported.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("Invalid URL: no hostname.")
+
+    try:
+        resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    except socket.gaierror:
+        raise ValueError(f"Could not resolve hostname: {hostname}")
+
+    for _family, _type, _proto, _canonname, sockaddr in resolved:
+        addr = ipaddress.ip_address(sockaddr[0])
+        if addr.is_private or addr.is_loopback or addr.is_link_local or addr.is_reserved:
+            raise ValueError("Requests to private or internal network addresses are not allowed.")
+
+
 async def fetch_recipe(url: str) -> dict:
     """
     Fetch a URL, extract JSON-LD Recipe data, and return parsed ingredients.
@@ -177,8 +201,10 @@ async def fetch_recipe(url: str) -> dict:
         }
 
     Raises:
-        ValueError if no recipe data found.
+        ValueError if no recipe data found or URL is unsafe.
     """
+    _validate_url(url)
+
     async with httpx.AsyncClient(
         follow_redirects=True,
         timeout=15.0,
@@ -209,14 +235,16 @@ async def fetch_recipe(url: str) -> dict:
 
     # Extract ingredients
     raw_ingredients = recipe_data.get("recipeIngredient", [])
+    # Some sites serve recipeIngredient as a single comma-separated string
+    # instead of a list. Normalise to a list to avoid iterating characters.
+    if isinstance(raw_ingredients, str):
+        raw_ingredients = [s.strip() for s in raw_ingredients.split(",") if s.strip()]
     if not raw_ingredients:
         raise ValueError("Recipe found but no ingredients listed.")
 
-    ingredients = [parse_ingredient(ing) for ing in raw_ingredients if ing.strip()]
+    ingredients = [parse_ingredient(ing) for ing in raw_ingredients if isinstance(ing, str) and len(ing.strip()) > 1]
     title = recipe_data.get("name", "Imported Recipe")
 
-    # Extract domain for source
-    from urllib.parse import urlparse
     source = urlparse(url).netloc.removeprefix("www.")
 
     return {

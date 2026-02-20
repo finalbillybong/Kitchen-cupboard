@@ -1,3 +1,4 @@
+import json
 import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, Query
@@ -13,12 +14,14 @@ from database import engine, get_db, Base
 from models import User, ListMember, ShoppingList
 from seed import seed_categories
 from websocket_manager import manager
-from routers.auth_router import router as auth_router
-from routers.categories_router import router as categories_router
-from routers.lists_router import router as lists_router
-from routers.items_router import router as items_router
-from routers.items_router import suggestions_router
-from routers.items_router import favourites_router
+from routers import (
+    auth_router,
+    categories_router,
+    lists_router,
+    items_router,
+    suggestions_router,
+    favourites_router,
+)
 
 # Ensure data directory exists
 os.makedirs("data", exist_ok=True)
@@ -145,7 +148,7 @@ def ai_context(db: Session = Depends(get_db)):
                 "GET /api/suggestions?q=": "Get item suggestions by name prefix",
             },
             "websocket": {
-                "WS /ws/{list_id}?token=": "Real-time updates for a list",
+                "WS /ws/{list_id}": "Real-time updates (send {type:'auth', token:'...'} as first message)",
             },
         },
     }
@@ -157,11 +160,34 @@ def ai_context(db: Session = Depends(get_db)):
 async def websocket_endpoint(
     websocket: WebSocket,
     list_id: str,
-    token: str = Query(...),
+    token: str = Query(None),
 ):
-    # Authenticate
+    # Accept the connection first so the client can send auth as a message
+    # instead of leaking the JWT in query-string logs.
+    # Backwards-compatible: token-in-query-string still works.
+    await websocket.accept()
+
+    auth_token = token
+    if not auth_token:
+        try:
+            first_msg = await websocket.receive_text()
+        except Exception:
+            await websocket.close(code=4001)
+            return
+        # Accept {"type": "auth", "token": "..."} or a bare token string
+        try:
+            parsed = json.loads(first_msg)
+            auth_token = parsed.get("token") if isinstance(parsed, dict) else None
+        except (json.JSONDecodeError, AttributeError):
+            auth_token = first_msg
+
+    if not auth_token:
+        await websocket.close(code=4001)
+        return
+
+    # Validate JWT
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = jwt.decode(auth_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         user_id = payload.get("sub")
         if not user_id:
             await websocket.close(code=4001)
@@ -194,10 +220,10 @@ async def websocket_endpoint(
     finally:
         db.close()
 
-    await manager.connect(websocket, list_id)
+    await websocket.send_text(json.dumps({"type": "auth_ok"}))
+    manager.active_connections[list_id].add(websocket)
     try:
         while True:
-            # Keep connection alive; client sends pings
             data = await websocket.receive_text()
             if data == "ping":
                 await websocket.send_text("pong")

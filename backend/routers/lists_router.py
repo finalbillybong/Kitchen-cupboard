@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy import func, case
+from sqlalchemy.orm import Session, joinedload
 
+from access import check_list_access
 from auth import get_current_user
 from database import get_db
 from models import User, ShoppingList, ListMember, ListItem
@@ -29,24 +31,37 @@ def _get_user_lists(user_id: str, db: Session, include_archived: bool = False):
     return query.order_by(ShoppingList.updated_at.desc()).all()
 
 
+def _build_member_out(member: ListMember) -> ListMemberOut:
+    """Convert a ListMember (with user relationship loaded) to API representation."""
+    u = member.user
+    return ListMemberOut(
+        id=member.id,
+        user_id=member.user_id,
+        username=u.username if u else "unknown",
+        display_name=u.display_name if u else None,
+        role=member.role,
+        joined_at=member.joined_at,
+    )
+
+
 def _list_to_out(lst: ShoppingList, db: Session) -> ListOut:
-    items = db.query(ListItem).filter(ListItem.list_id == lst.id).all()
-    members = db.query(ListMember).filter(ListMember.list_id == lst.id).all()
+    # Use aggregate query instead of loading all items into memory
+    counts = db.query(
+        func.count(ListItem.id),
+        func.sum(case((ListItem.checked == True, 1), else_=0)),
+    ).filter(ListItem.list_id == lst.id).one()
+    item_count = counts[0] or 0
+    checked_count = int(counts[1] or 0)
 
-    member_list = []
-    for m in members:
-        u = db.query(User).filter(User.id == m.user_id).first()
-        if u:
-            member_list.append(ListMemberOut(
-                id=m.id,
-                user_id=m.user_id,
-                username=u.username,
-                display_name=u.display_name,
-                role=m.role,
-                joined_at=m.joined_at,
-            ))
+    members = (
+        db.query(ListMember)
+        .options(joinedload(ListMember.user))
+        .filter(ListMember.list_id == lst.id)
+        .all()
+    )
+    member_list = [_build_member_out(m) for m in members if m.user]
 
-    # Add owner as member
+    # Add owner as a virtual member if not already in the members table
     owner = db.query(User).filter(User.id == lst.owner_id).first()
     if owner and not any(m.user_id == owner.id for m in members):
         member_list.insert(0, ListMemberOut(
@@ -68,31 +83,10 @@ def _list_to_out(lst: ShoppingList, db: Session) -> ListOut:
         is_archived=lst.is_archived,
         created_at=lst.created_at,
         updated_at=lst.updated_at,
-        item_count=len(items),
-        checked_count=len([i for i in items if i.checked]),
+        item_count=item_count,
+        checked_count=checked_count,
         members=member_list,
     )
-
-
-def _check_list_access(list_id: str, user_id: str, db: Session, require_edit: bool = False) -> ShoppingList:
-    lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
-    if not lst:
-        raise HTTPException(status_code=404, detail="List not found")
-
-    if lst.owner_id == user_id:
-        return lst
-
-    member = db.query(ListMember).filter(
-        ListMember.list_id == list_id,
-        ListMember.user_id == user_id,
-    ).first()
-    if not member:
-        raise HTTPException(status_code=404, detail="List not found")
-
-    if require_edit and member.role == "viewer":
-        raise HTTPException(status_code=403, detail="View-only access")
-
-    return lst
 
 
 @router.get("", response_model=list[ListOut])
@@ -130,7 +124,7 @@ def get_list(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    lst = _check_list_access(list_id, user.id, db)
+    lst = check_list_access(list_id, user.id, db)
     return _list_to_out(lst, db)
 
 
@@ -141,7 +135,7 @@ def update_list(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    lst = _check_list_access(list_id, user.id, db, require_edit=True)
+    lst = check_list_access(list_id, user.id, db, require_edit=True)
 
     if data.name is not None:
         lst.name = data.name
