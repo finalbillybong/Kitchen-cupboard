@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { User, Key, Shield, Tag } from 'lucide-react';
+import { User, Key, Shield, Tag, Bell } from 'lucide-react';
 import ProfileTab from './settings/ProfileTab';
 import ApiKeysTab from './settings/ApiKeysTab';
 import CategoriesTab from './settings/CategoriesTab';
 import AdminTab from './settings/AdminTab';
+import NotificationsTab from './settings/NotificationsTab';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -12,6 +13,7 @@ export default function SettingsPage() {
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
+    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'categories', label: 'Categories', icon: Tag },
   ];
 
@@ -42,6 +44,7 @@ export default function SettingsPage() {
       </div>
 
       {tab === 'profile' && <ProfileTab />}
+      {tab === 'notifications' && <NotificationsTab />}
       {tab === 'apikeys' && <ApiKeysTab />}
       {tab === 'categories' && <CategoriesTab />}
       {tab === 'admin' && <AdminTab />}

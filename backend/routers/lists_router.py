@@ -6,6 +6,7 @@ from access import check_list_access
 from auth import get_current_user
 from database import get_db
 from models import User, ShoppingList, ListMember, ListItem
+from push_service import send_push_for_list_shared
 from schemas import (
     ListCreate,
     ListUpdate,
@@ -213,6 +214,7 @@ def share_list(
     db.add(member)
     db.commit()
     db.refresh(member)
+    send_push_for_list_shared(list_id, lst.name, target.id, user, db)
     return ListMemberOut(
         id=member.id,
         user_id=target.id,

@@ -177,3 +177,39 @@ class InviteCode(Base):
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow)
     expires_at = Column(DateTime, nullable=True)
+
+
+class PushSubscription(Base):
+    """Stores Web Push API subscriptions for each user/device."""
+    __tablename__ = "push_subscriptions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    endpoint = Column(Text, nullable=False)
+    key_p256dh = Column(String(255), nullable=False)
+    key_auth = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+    user = relationship("User")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "endpoint", name="uq_push_sub_user_endpoint"),
+        Index("ix_push_sub_user", "user_id"),
+    )
+
+
+class NotificationPreference(Base):
+    """Per-user notification preferences."""
+    __tablename__ = "notification_preferences"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    push_enabled = Column(Boolean, default=True)
+    notify_item_added = Column(Boolean, default=True)
+    notify_item_checked = Column(Boolean, default=True)
+    notify_item_updated = Column(Boolean, default=False)
+    notify_item_removed = Column(Boolean, default=False)
+    notify_list_shared = Column(Boolean, default=True)
+    notify_checked_cleared = Column(Boolean, default=False)
+
+    user = relationship("User")

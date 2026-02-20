@@ -21,6 +21,7 @@ from routers import (
     items_router,
     suggestions_router,
     favourites_router,
+    push_router,
 )
 
 # Ensure data directory exists
@@ -66,7 +67,7 @@ async def add_security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss: ws:; font-src 'self'"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss: ws: https:; font-src 'self'; worker-src 'self'"
     return response
 
 # ─── Routers ────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ app.include_router(lists_router)
 app.include_router(items_router)
 app.include_router(suggestions_router)
 app.include_router(favourites_router)
+app.include_router(push_router)
 
 
 # ─── Health / Context ───────────────────────────────────────────────

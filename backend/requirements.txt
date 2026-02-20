@@ -11,3 +11,4 @@ aiosqlite==0.20.0
 websockets==14.1
 httpx==0.28.1
 beautifulsoup4==4.12.3
+pywebpush==2.3.0

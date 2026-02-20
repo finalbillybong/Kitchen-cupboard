@@ -307,6 +307,48 @@ class ApiClient {
   getFavourites(limit = 20) {
     return this.request(`/favourites?limit=${limit}`);
   }
+
+  // Push Notifications
+  getVapidKey() {
+    return this.request('/push/vapid-key');
+  }
+
+  subscribePush(subscription) {
+    return this.request('/push/subscribe', {
+      method: 'POST',
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.toJSON().keys.p256dh,
+          auth: subscription.toJSON().keys.auth,
+        },
+      }),
+    });
+  }
+
+  unsubscribePush(subscription) {
+    return this.request('/push/subscribe', {
+      method: 'DELETE',
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: subscription.toJSON().keys.p256dh,
+          auth: subscription.toJSON().keys.auth,
+        },
+      }),
+    });
+  }
+
+  getNotificationSettings() {
+    return this.request('/push/settings');
+  }
+
+  updateNotificationSettings(data) {
+    return this.request('/push/settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
 }
 
 export const api = new ApiClient();

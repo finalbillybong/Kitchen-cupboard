@@ -27,10 +27,14 @@ if ('serviceWorker' in navigator) {
         reg.active?.postMessage('replay-queue');
       });
 
-      // Listen for sync completion to refresh data
+      // Listen for messages from service worker
       navigator.serviceWorker.addEventListener('message', (event) => {
         if (event.data?.type === 'queue-replayed') {
           window.location.reload();
+        }
+        // Deep link from push notification tap
+        if (event.data?.type === 'navigate' && event.data.url) {
+          window.location.href = event.data.url;
         }
       });
     }).catch((err) => {
