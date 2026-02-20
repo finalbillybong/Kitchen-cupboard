@@ -10,6 +10,8 @@ import ShareModal from '../components/ShareModal';
 import RecipeImportModal from '../components/RecipeImportModal';
 import FavouritesBar from '../components/FavouritesBar';
 import ItemAddForm from '../components/ItemAddForm';
+import PullToRefresh from '../components/PullToRefresh';
+import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import {
   ArrowLeft, Trash2, Check, Settings2,
   ChevronDown, ChevronRight, UserPlus, Archive, Search,
@@ -67,6 +69,8 @@ export default function ListDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const ptr = usePullToRefresh(fetchData);
 
   // Fetch favourites
   useEffect(() => {
@@ -243,6 +247,7 @@ export default function ListDetailPage() {
 
   return (
     <div>
+      <PullToRefresh {...ptr} />
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link to="/" className="btn-ghost p-2">
