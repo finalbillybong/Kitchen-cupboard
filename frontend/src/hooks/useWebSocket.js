@@ -9,12 +9,15 @@ export function useWebSocket(listId, onMessage) {
     if (!token || !listId) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const url = `${protocol}//${window.location.host}/ws/${listId}?token=${token}`;
+    const url = `${protocol}//${window.location.host}/ws/${listId}`;
 
     const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      // Send token as first message instead of in the query string
+      ws.send(JSON.stringify({ type: 'auth', token }));
+
       // Send periodic pings
       const pingInterval = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -30,6 +33,8 @@ export function useWebSocket(listId, onMessage) {
       if (event.data === 'pong') return;
       try {
         const msg = JSON.parse(event.data);
+        // Ignore auth_ok acknowledgements
+        if (msg.type === 'auth_ok') return;
         onMessage(msg);
       } catch (e) {
         // ignore parse errors

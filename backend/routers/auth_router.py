@@ -17,7 +17,7 @@ from auth import (
 )
 from config import settings
 from database import get_db
-from models import User, ApiKey, AuditLog, InviteCode, ShoppingList, ListMember, ListItem, ItemCategoryMemory, utcnow
+from models import User, ApiKey, AuditLog, InviteCode, ShoppingList, ListMember, ListItem, utcnow
 from rate_limit import login_limiter, register_limiter
 from schemas import (
     UserCreate,
@@ -58,8 +58,9 @@ def _clear_refresh_cookie(response: Response):
 
 
 def _audit(db: Session, action: str, user_id: str = None, detail: str = "", ip: str = None):
+    """Record an audit log entry. Callers must commit the session themselves
+    unless this is a standalone audit event (e.g. recording a rate-limit hit)."""
     db.add(AuditLog(user_id=user_id, action=action, detail=detail, ip_address=ip))
-    db.commit()
 
 
 @router.post("/register", response_model=Token, status_code=201)
@@ -125,6 +126,7 @@ def register(data: UserCreate, request: Request, response: Response, db: Session
 
     register_limiter.record_attempt(client_ip)
     _audit(db, "user.register", user.id, f"username={user.username}", client_ip)
+    db.commit()
     token = create_access_token({"sub": user.id})
     _set_refresh_cookie(response, create_refresh_token(user.id))
     return Token(access_token=token, user=UserOut.model_validate(user))
@@ -137,6 +139,7 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     if login_limiter.is_rate_limited(client_ip):
         remaining = login_limiter.remaining_seconds(client_ip)
         _audit(db, "login.rate_limited", detail=f"ip={client_ip}", ip=client_ip)
+        db.commit()
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail=f"Too many login attempts. Try again in {remaining} seconds.",
@@ -147,12 +150,15 @@ def login(data: UserLogin, request: Request, response: Response, db: Session = D
     if not user or not verify_password(data.password, user.password_hash):
         login_limiter.record_attempt(client_ip)
         _audit(db, "login.failed", detail=f"username={data.username}", ip=client_ip)
+        db.commit()
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         _audit(db, "login.disabled", user.id, ip=client_ip)
+        db.commit()
         raise HTTPException(status_code=403, detail="Account is disabled")
 
     _audit(db, "login.success", user.id, ip=client_ip)
+    db.commit()
     token = create_access_token({"sub": user.id})
     _set_refresh_cookie(response, create_refresh_token(user.id))
     return Token(access_token=token, user=UserOut.model_validate(user))
@@ -226,6 +232,7 @@ def change_password(
     db.commit()
     client_ip = request.client.host if request.client else None
     _audit(db, "password.changed", user.id, ip=client_ip)
+    db.commit()
     return {"message": "Password changed successfully"}
 
 
@@ -251,6 +258,7 @@ def create_api_key(
     db.refresh(api_key)
     client_ip = request.client.host if request.client else None
     _audit(db, "apikey.created", user.id, f"name={data.name} scopes={data.scopes}", client_ip)
+    db.commit()
     out = ApiKeyOut.model_validate(api_key)
     return ApiKeyCreated(**out.model_dump(), key=raw_key)
 
@@ -279,6 +287,7 @@ def delete_api_key(
     db.commit()
     client_ip = request.client.host if request.client else None
     _audit(db, "apikey.deleted", user.id, f"name={key_name}", client_ip)
+    db.commit()
 
 
 # ─── Invite Codes (admin only) ─────────────────────────────────────
@@ -300,6 +309,7 @@ def create_invite_code(
     db.refresh(invite)
     client_ip = request.client.host if request.client else None
     _audit(db, "invite.created", user.id, f"code={code}", client_ip)
+    db.commit()
     return InviteCodeOut.model_validate(invite)
 
 
@@ -334,6 +344,7 @@ def delete_invite_code(
     db.commit()
     client_ip = request.client.host if request.client else None
     _audit(db, "invite.deleted", user.id, f"code={code_val}", client_ip)
+    db.commit()
 
 
 # ─── Admin: User Management ────────────────────────────────────────
@@ -365,6 +376,7 @@ def toggle_user_active(
     client_ip = request.client.host if request.client else None
     action = "user.activated" if target.is_active else "user.deactivated"
     _audit(db, action, admin.id, f"target={target.username}", client_ip)
+    db.commit()
     return UserOut.model_validate(target)
 
 
@@ -419,3 +431,4 @@ def delete_user(
 
     client_ip = request.client.host if request.client else None
     _audit(db, "user.deleted", admin.id, f"target={username}", client_ip)
+    db.commit()

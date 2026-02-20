@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import ErrorBoundary from './ErrorBoundary';
 import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat } from 'lucide-react';
 
 export default function Layout() {
@@ -49,7 +50,9 @@ export default function Layout() {
 
       {/* Main content */}
       <main className="max-w-4xl mx-auto px-4 py-6">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );
