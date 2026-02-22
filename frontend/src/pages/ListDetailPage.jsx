@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
+import { usePreferences } from '../hooks/usePreferences';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useRecipeImport } from '../hooks/useRecipeImport';
 import { useDragReorder } from '../hooks/useDragReorder';
@@ -22,6 +23,7 @@ export default function ListDetailPage() {
   const { listId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { prefs } = usePreferences();
   const [list, setList] = useState(null);
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -349,6 +351,7 @@ export default function ListDetailPage() {
                       onDragEnter={drag.reorderMode ? drag.handleDragEnter : undefined}
                       onDragEnd={drag.reorderMode ? drag.handleDragEnd : undefined}
                       isDragging={drag.draggingId === item.id}
+                      tapMode={prefs.tapMode}
                     />
                   ))}
                 </div>
@@ -386,6 +389,7 @@ export default function ListDetailPage() {
                       onDelete={handleDeleteItem}
                       onEdit={openEditModal}
                       isChecked
+                      tapMode={prefs.tapMode}
                     />
                   ))}
                 </div>
@@ -528,10 +532,11 @@ export default function ListDetailPage() {
 function ItemRow({
   item, groupId, onToggle, onDelete, onEdit,
   reorderMode, onDragStart, onDragEnter, onDragEnd,
-  isDragging, isChecked,
+  isDragging, isChecked, tapMode,
 }) {
   const longPressTimer = useRef(null);
   const pointerStart = useRef(null);
+  const wasLongPress = useRef(false);
   const [pressing, setPressing] = useState(false);
 
   useEffect(() => {
@@ -541,8 +546,10 @@ function ItemRow({
   const handlePointerDown = (e) => {
     if (reorderMode) return;
     pointerStart.current = { x: e.clientX, y: e.clientY };
+    wasLongPress.current = false;
     setPressing(true);
     longPressTimer.current = setTimeout(() => {
+      wasLongPress.current = true;
       setPressing(false);
       onEdit(item);
       if (navigator.vibrate) navigator.vibrate(30);
@@ -564,6 +571,14 @@ function ItemRow({
     clearTimeout(longPressTimer.current);
     pointerStart.current = null;
     setPressing(false);
+  };
+
+  const handleContentClick = () => {
+    if (reorderMode) return;
+    // In one-tap mode, a quick tap (not a long press) on the content toggles the check
+    if (tapMode === 'one' && !wasLongPress.current) {
+      onToggle(item);
+    }
   };
 
   const dragProps = reorderMode && !isChecked ? {
@@ -615,13 +630,14 @@ function ItemRow({
         </button>
       )}
 
-      {/* Content area - long press to edit */}
+      {/* Content area - tap to check (one-tap mode) or long press to edit */}
       <div
-        className="flex-1 min-w-0"
+        className={`flex-1 min-w-0${tapMode === 'one' ? ' cursor-pointer' : ''}`}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
+        onClick={handleContentClick}
       >
         <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
           {item.name}

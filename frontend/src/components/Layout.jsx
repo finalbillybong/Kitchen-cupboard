@@ -1,12 +1,14 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { useTheme } from '../hooks/useTheme';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import ErrorBoundary from './ErrorBoundary';
-import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat } from 'lucide-react';
+import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat, WifiOff, CloudUpload } from 'lucide-react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const { dark, toggle } = useTheme();
+  const { online, queueCount } = useOnlineStatus();
   const location = useLocation();
 
   return (
@@ -47,6 +49,32 @@ export default function Layout() {
           </div>
         </div>
       </header>
+
+      {/* Offline banner */}
+      {!online && (
+        <div className="bg-amber-500 text-white text-sm font-medium">
+          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-2">
+            <WifiOff className="h-4 w-4 flex-shrink-0" />
+            <span>You're offline — changes will sync when you reconnect</span>
+            {queueCount > 0 && (
+              <span className="ml-auto flex items-center gap-1.5 bg-amber-600 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                <CloudUpload className="h-3 w-3" />
+                {queueCount} pending
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Syncing banner — online but still have queued items */}
+      {online && queueCount > 0 && (
+        <div className="bg-blue-500 text-white text-sm font-medium">
+          <div className="max-w-4xl mx-auto px-4 py-2 flex items-center gap-2">
+            <CloudUpload className="h-4 w-4 flex-shrink-0 animate-pulse" />
+            <span>Syncing {queueCount} pending change{queueCount !== 1 ? 's' : ''}...</span>
+          </div>
+        </div>
+      )}
 
       {/* Main content */}
       <main className="max-w-4xl mx-auto px-4 py-6">
