@@ -2,9 +2,9 @@ import { useState, useRef, useEffect } from 'react';
 import { Plus, MoreHorizontal } from 'lucide-react';
 import api from '../api/client';
 
-export default function ItemAddForm({ listId, categories, onItemAdded }) {
+export default function ItemAddForm({ listId, categories, onItemAdded, defaultQuantity = 1 }) {
   const [name, setName] = useState('');
-  const [qty, setQty] = useState('1');
+  const [qty, setQty] = useState(String(defaultQuantity));
   const [unit, setUnit] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [suggestions, setSuggestions] = useState([]);
@@ -39,7 +39,7 @@ export default function ItemAddForm({ listId, categories, onItemAdded }) {
       });
       onItemAdded(item);
       setName('');
-      setQty('1');
+      setQty(String(defaultQuantity));
       setUnit('');
       setCategoryId('');
       setSuggestions([]);

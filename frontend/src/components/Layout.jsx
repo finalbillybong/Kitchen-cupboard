@@ -23,7 +23,7 @@ export default function Layout() {
 
           <div className="flex items-center gap-1">
             <Link
-              to="/"
+              to="/?stay"
               className={`btn-ghost flex items-center gap-2 text-sm ${
                 location.pathname === '/' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/40' : ''
               }`}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
+import { usePreferences } from '../hooks/usePreferences';
 import Modal from '../components/Modal';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import PullToRefresh from '../components/PullToRefresh';
@@ -12,12 +13,16 @@ const LIST_COLORS = [
 ];
 
 export default function ListsPage() {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { prefs } = usePreferences();
   const [lists, setLists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [newList, setNewList] = useState({ name: '', description: '', color: '#6366f1' });
   const [creating, setCreating] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [didRedirect, setDidRedirect] = useState(false);
 
   const fetchLists = useCallback(async () => {
     try {
@@ -33,6 +38,15 @@ export default function ListsPage() {
   useEffect(() => {
     fetchLists();
   }, [fetchLists]);
+
+  // Redirect to default list if set (only on first load, skip if ?stay param)
+  useEffect(() => {
+    if (didRedirect || loading || searchParams.has('stay')) return;
+    if (prefs.defaultListId && lists.some((l) => l.id === prefs.defaultListId)) {
+      setDidRedirect(true);
+      navigate(`/list/${prefs.defaultListId}`, { replace: true });
+    }
+  }, [prefs.defaultListId, lists, loading, navigate, didRedirect, searchParams]);
 
   const ptr = usePullToRefresh(fetchLists);
 
