@@ -36,6 +36,7 @@ class User(Base):
     display_name = Column(String(100))
     is_admin = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    preferences = Column(Text, default='{}')  # JSON: user preferences (tap_mode, etc.)
     created_at = Column(DateTime, default=utcnow)
 
     lists_owned = relationship("ShoppingList", back_populates="owner")

@@ -48,6 +48,10 @@ class PasswordChange(BaseModel):
     new_password: str = Field(..., min_length=8)
 
 
+class UserPreferences(BaseModel):
+    tap_mode: str = Field("two", pattern="^(one|two)$")
+
+
 # ─── Categories ─────────────────────────────────────────────────────
 
 class CategoryCreate(BaseModel):

@@ -1,3 +1,4 @@
+import json
 import secrets
 from datetime import timedelta
 
@@ -26,6 +27,7 @@ from schemas import (
     UserUpdate,
     Token,
     PasswordChange,
+    UserPreferences,
     ApiKeyCreate,
     ApiKeyOut,
     ApiKeyCreated,
@@ -234,6 +236,28 @@ def change_password(
     _audit(db, "password.changed", user.id, ip=client_ip)
     db.commit()
     return {"message": "Password changed successfully"}
+
+
+# ─── User Preferences ────────────────────────────────────────────────
+
+@router.get("/preferences", response_model=UserPreferences)
+def get_preferences(user: User = Depends(get_current_user_jwt)):
+    try:
+        data = json.loads(user.preferences or '{}')
+    except (json.JSONDecodeError, TypeError):
+        data = {}
+    return UserPreferences(**data)
+
+
+@router.put("/preferences", response_model=UserPreferences)
+def update_preferences(
+    data: UserPreferences,
+    user: User = Depends(get_current_user_jwt),
+    db: Session = Depends(get_db),
+):
+    user.preferences = json.dumps(data.model_dump())
+    db.commit()
+    return data
 
 
 # ─── API Keys (admin only) ─────────────────────────────────────────

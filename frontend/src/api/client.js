@@ -146,6 +146,18 @@ class ApiClient {
     });
   }
 
+  // Preferences
+  getPreferences() {
+    return this.request('/auth/preferences');
+  }
+
+  updatePreferences(data) {
+    return this.request('/auth/preferences', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   // API Keys
   getApiKeys() {
     return this.request('/auth/api-keys');

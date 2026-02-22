@@ -24,7 +24,22 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 // Register service worker for offline support
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then((reg) => {
+      // Check for SW updates periodically (every 60s)
+      setInterval(() => reg.update(), 60 * 1000);
+
+      // When a new SW is installed and waiting, reload to activate it
+      reg.addEventListener('updatefound', () => {
+        const newSw = reg.installing;
+        if (newSw) {
+          newSw.addEventListener('statechange', () => {
+            if (newSw.state === 'activated') {
+              window.location.reload();
+            }
+          });
+        }
+      });
+
       // Replay offline queue when back online
       window.addEventListener('online', () => {
         reg.active?.postMessage('replay-queue');

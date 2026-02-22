@@ -1,7 +1,10 @@
-const STATIC_CACHE = 'kc-static-v1';
-const API_CACHE = 'kc-api-v1';
+// __BUILD_HASH__ is replaced at build time by the Vite plugin with a unique hash.
+// This ensures the browser detects a new SW on every deploy.
+const BUILD = '__BUILD_HASH__';
+const STATIC_CACHE = `kc-static-${BUILD}`;
+const API_CACHE = `kc-api-${BUILD}`;
 
-// Install - cache app shell
+// Install - cache app shell and immediately activate
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE).then((cache) => {
@@ -17,7 +20,7 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate - clean old caches
+// Activate - delete ALL old caches from previous builds and take control
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => {
@@ -26,9 +29,8 @@ self.addEventListener('activate', (event) => {
           .filter((key) => key !== STATIC_CACHE && key !== API_CACHE)
           .map((key) => caches.delete(key))
       );
-    })
+    }).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 // Fetch - route-based caching strategies
