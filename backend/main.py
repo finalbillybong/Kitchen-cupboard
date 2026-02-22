@@ -239,6 +239,15 @@ static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     app.mount("/assets", StaticFiles(directory=os.path.join(static_dir, "assets")), name="assets")
 
+    @app.get("/sw.js")
+    async def serve_sw():
+        """Serve service worker with no-cache so browsers always check for updates."""
+        return FileResponse(
+            os.path.join(static_dir, "sw.js"),
+            media_type="application/javascript",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
+
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         # Resolve the path and ensure it stays within static_dir (prevent traversal)
