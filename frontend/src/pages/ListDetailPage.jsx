@@ -23,7 +23,7 @@ export default function ListDetailPage() {
   const { listId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { prefs } = usePreferences();
+  const { prefs, update: updatePref } = usePreferences();
   const [list, setList] = useState(null);
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -72,12 +72,33 @@ export default function ListDetailPage() {
     fetchData();
   }, [fetchData]);
 
+  // Save this as default list
+  useEffect(() => {
+    if (listId && list) {
+      updatePref('defaultListId', listId);
+    }
+  }, [listId, list, updatePref]);
+
   const ptr = usePullToRefresh(fetchData);
 
   // Fetch favourites
   useEffect(() => {
     api.getFavourites(15).then(setFavourites).catch(() => {});
   }, []);
+
+  // Auto-clear checked items
+  useEffect(() => {
+    if (!prefs.autoClearCheckedHours || prefs.autoClearCheckedHours <= 0) return;
+    const cutoff = Date.now() - prefs.autoClearCheckedHours * 3600 * 1000;
+    const staleChecked = items.filter(
+      (i) => i.checked && i.checked_at && new Date(i.checked_at).getTime() < cutoff
+    );
+    if (staleChecked.length > 0) {
+      api.clearChecked(listId).then(() => {
+        setItems((prev) => prev.filter((i) => !i.checked));
+      }).catch(() => {});
+    }
+  }, [items, prefs.autoClearCheckedHours, listId]);
 
   // WebSocket for real-time updates
   const handleWsMessage = useCallback((msg) => {
@@ -118,6 +139,9 @@ export default function ListDetailPage() {
   };
 
   const handleDeleteItem = async (itemId) => {
+    if (prefs.confirmBeforeDelete) {
+      if (!confirm('Delete this item?')) return;
+    }
     await api.deleteItem(listId, itemId);
     setItems((prev) => prev.filter((i) => i.id !== itemId));
   };
@@ -150,7 +174,7 @@ export default function ListDetailPage() {
     try {
       const item = await api.createItem(listId, {
         name: fav.name,
-        quantity: 1,
+        quantity: prefs.defaultQuantity,
         unit: '',
         category_id: fav.category_id || null,
       });
@@ -198,10 +222,30 @@ export default function ListDetailPage() {
     }
   };
 
-  // Group items by category (memoized to avoid recalculating on every render)
-  const { sortedGroups, checked } = useMemo(() => {
+  // ─── Sort helper ──────────────────────────────────────────────
+  const sortFn = useCallback((a, b) => {
+    switch (prefs.sortItemsBy) {
+      case 'name':
+        return a.name.localeCompare(b.name);
+      case 'date':
+        return new Date(a.created_at) - new Date(b.created_at);
+      case 'category':
+        return (a.category_name || 'zzz').localeCompare(b.category_name || 'zzz');
+      default: // manual
+        return a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at);
+    }
+  }, [prefs.sortItemsBy]);
+
+  // Group items by category (memoized)
+  const { sortedGroups, flatItems, checked } = useMemo(() => {
     const uncheckedItems = items.filter((i) => !i.checked);
     const checkedItems = items.filter((i) => i.checked);
+
+    // If categories are disabled, return a flat list
+    if (!prefs.showCategories) {
+      const sorted = [...uncheckedItems].sort(sortFn);
+      return { sortedGroups: [], flatItems: sorted, checked: checkedItems };
+    }
 
     const groups = {};
     for (const item of uncheckedItems) {
@@ -218,9 +262,7 @@ export default function ListDetailPage() {
     }
 
     for (const group of Object.values(groups)) {
-      group.items.sort((a, b) =>
-        a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at)
-      );
+      group.items.sort(sortFn);
     }
 
     const sorted = Object.values(groups).sort((a, b) => {
@@ -229,8 +271,8 @@ export default function ListDetailPage() {
       return a.name.localeCompare(b.name);
     });
 
-    return { sortedGroups: sorted, checked: checkedItems };
-  }, [items]);
+    return { sortedGroups: sorted, flatItems: [], checked: checkedItems };
+  }, [items, prefs.showCategories, sortFn]);
 
   if (loading) {
     return (
@@ -246,6 +288,55 @@ export default function ListDetailPage() {
 
   const itemNamesLower = new Set(items.map((i) => i.name.toLowerCase()));
   const availableFavourites = favourites.filter((f) => !itemNamesLower.has(f.name.toLowerCase()));
+
+  const hasItems = sortedGroups.length > 0 || flatItems.length > 0 || checked.length > 0;
+
+  const renderItemRow = (item, groupId, isCheckedItem) => (
+    <ItemRow
+      key={item.id}
+      item={item}
+      groupId={groupId}
+      onToggle={handleToggleCheck}
+      onDelete={handleDeleteItem}
+      onEdit={openEditModal}
+      reorderMode={drag.reorderMode}
+      onDragStart={drag.reorderMode ? drag.handleDragStart : undefined}
+      onDragEnter={drag.reorderMode ? drag.handleDragEnter : undefined}
+      onDragEnd={drag.reorderMode ? drag.handleDragEnd : undefined}
+      isDragging={drag.draggingId === item.id}
+      isChecked={isCheckedItem}
+      tapMode={prefs.tapMode}
+      compact={prefs.compactMode}
+      vibration={prefs.vibrationFeedback}
+      swipeActions={prefs.swipeActions}
+    />
+  );
+
+  const checkedSection = prefs.sortChecked !== 'hidden' && checked.length > 0 && (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <button
+          onClick={() => setCollapsed({ ...collapsed, checked: !collapsed.checked })}
+          className="flex items-center gap-2 text-sm font-semibold text-gray-400 dark:text-gray-500"
+        >
+          {collapsed.checked ? (
+            <ChevronRight className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+          Completed ({checked.length})
+        </button>
+        <button onClick={handleClearChecked} className="text-xs text-red-500 hover:text-red-600 font-medium">
+          Clear all
+        </button>
+      </div>
+      {!collapsed.checked && (
+        <div className="space-y-1 opacity-60">
+          {checked.map((item) => renderItemRow(item, 'checked', true))}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div>
@@ -302,6 +393,7 @@ export default function ListDetailPage() {
           listId={listId}
           categories={categories}
           onItemAdded={(item) => setItems((prev) => [...prev, item])}
+          defaultQuantity={prefs.defaultQuantity}
         />
       )}
 
@@ -310,15 +402,26 @@ export default function ListDetailPage() {
         <FavouritesBar favourites={availableFavourites} onQuickAdd={handleQuickAdd} />
       )}
 
-      {/* Items grouped by category */}
-      {sortedGroups.length === 0 && checked.length === 0 ? (
+      {/* Items */}
+      {!hasItems ? (
         <div className="text-center py-16">
           <Search className="h-12 w-12 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
           <p className="text-gray-400 dark:text-gray-500">No items yet. Add something above!</p>
         </div>
       ) : (
         <div className="space-y-4" ref={drag.itemsContainerRef}>
-          {sortedGroups.map((group) => (
+          {/* Checked at top */}
+          {prefs.sortChecked === 'top' && checkedSection}
+
+          {/* Flat list (categories disabled) */}
+          {!prefs.showCategories && flatItems.length > 0 && (
+            <div className="space-y-1">
+              {flatItems.map((item) => renderItemRow(item, 'flat', false))}
+            </div>
+          )}
+
+          {/* Grouped by category */}
+          {prefs.showCategories && sortedGroups.map((group) => (
             <div key={group.id}>
               <button
                 onClick={() => setCollapsed({ ...collapsed, [group.id]: !collapsed[group.id] })}
@@ -338,64 +441,14 @@ export default function ListDetailPage() {
               </button>
               {!collapsed[group.id] && (
                 <div className="space-y-1">
-                  {group.items.map((item) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      groupId={group.id}
-                      onToggle={handleToggleCheck}
-                      onDelete={handleDeleteItem}
-                      onEdit={openEditModal}
-                      reorderMode={drag.reorderMode}
-                      onDragStart={drag.reorderMode ? drag.handleDragStart : undefined}
-                      onDragEnter={drag.reorderMode ? drag.handleDragEnter : undefined}
-                      onDragEnd={drag.reorderMode ? drag.handleDragEnd : undefined}
-                      isDragging={drag.draggingId === item.id}
-                      tapMode={prefs.tapMode}
-                    />
-                  ))}
+                  {group.items.map((item) => renderItemRow(item, group.id, false))}
                 </div>
               )}
             </div>
           ))}
 
-          {/* Checked items */}
-          {checked.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <button
-                  onClick={() => setCollapsed({ ...collapsed, checked: !collapsed.checked })}
-                  className="flex items-center gap-2 text-sm font-semibold text-gray-400 dark:text-gray-500"
-                >
-                  {collapsed.checked ? (
-                    <ChevronRight className="h-4 w-4" />
-                  ) : (
-                    <ChevronDown className="h-4 w-4" />
-                  )}
-                  Completed ({checked.length})
-                </button>
-                <button onClick={handleClearChecked} className="text-xs text-red-500 hover:text-red-600 font-medium">
-                  Clear all
-                </button>
-              </div>
-              {!collapsed.checked && (
-                <div className="space-y-1 opacity-60">
-                  {checked.map((item) => (
-                    <ItemRow
-                      key={item.id}
-                      item={item}
-                      groupId="checked"
-                      onToggle={handleToggleCheck}
-                      onDelete={handleDeleteItem}
-                      onEdit={openEditModal}
-                      isChecked
-                      tapMode={prefs.tapMode}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Checked at bottom (default) */}
+          {prefs.sortChecked === 'bottom' && checkedSection}
         </div>
       )}
 
@@ -532,12 +585,17 @@ export default function ListDetailPage() {
 function ItemRow({
   item, groupId, onToggle, onDelete, onEdit,
   reorderMode, onDragStart, onDragEnter, onDragEnd,
-  isDragging, isChecked, tapMode,
+  isDragging, isChecked, tapMode, compact, vibration, swipeActions,
 }) {
   const longPressTimer = useRef(null);
   const pointerStart = useRef(null);
   const wasLongPress = useRef(false);
   const [pressing, setPressing] = useState(false);
+
+  // Swipe state
+  const [swipeX, setSwipeX] = useState(0);
+  const swipeStartRef = useRef(null);
+  const swipingRef = useRef(false);
 
   useEffect(() => {
     return () => clearTimeout(longPressTimer.current);
@@ -548,22 +606,41 @@ function ItemRow({
     pointerStart.current = { x: e.clientX, y: e.clientY };
     wasLongPress.current = false;
     setPressing(true);
+
+    // Start swipe tracking
+    if (swipeActions) {
+      swipeStartRef.current = { x: e.clientX, y: e.clientY };
+      swipingRef.current = false;
+    }
+
     longPressTimer.current = setTimeout(() => {
       wasLongPress.current = true;
       setPressing(false);
       onEdit(item);
-      if (navigator.vibrate) navigator.vibrate(30);
+      if (vibration && navigator.vibrate) navigator.vibrate(30);
     }, 500);
   };
 
   const handlePointerMove = (e) => {
     if (!pointerStart.current) return;
-    const dx = Math.abs(e.clientX - pointerStart.current.x);
+    const dx = e.clientX - pointerStart.current.x;
     const dy = Math.abs(e.clientY - pointerStart.current.y);
-    if (dx > 10 || dy > 10) {
+
+    // Cancel long press on any movement
+    if (Math.abs(dx) > 10 || dy > 10) {
       clearTimeout(longPressTimer.current);
-      pointerStart.current = null;
       setPressing(false);
+    }
+
+    // Swipe handling
+    if (swipeActions && swipeStartRef.current && !wasLongPress.current) {
+      const absDx = Math.abs(dx);
+      if (absDx > 15 && dy < 30) {
+        swipingRef.current = true;
+        // Dampen the swipe
+        const dampened = dx * 0.5;
+        setSwipeX(Math.max(-100, Math.min(100, dampened)));
+      }
     }
   };
 
@@ -571,10 +648,27 @@ function ItemRow({
     clearTimeout(longPressTimer.current);
     pointerStart.current = null;
     setPressing(false);
+
+    // Handle swipe completion
+    if (swipingRef.current) {
+      if (swipeX < -60) {
+        // Swipe left → delete
+        onDelete(item.id);
+      } else if (swipeX > 60) {
+        // Swipe right → toggle check
+        onToggle(item);
+      }
+      swipingRef.current = false;
+      swipeStartRef.current = null;
+      setSwipeX(0);
+      return;
+    }
+
+    swipeStartRef.current = null;
   };
 
   const handleContentClick = () => {
-    if (reorderMode) return;
+    if (reorderMode || swipingRef.current) return;
     // In one-tap mode, a quick tap (not a long press) on the content toggles the check
     if (tapMode === 'one' && !wasLongPress.current) {
       onToggle(item);
@@ -589,7 +683,8 @@ function ItemRow({
     onDragOver: (e) => e.preventDefault(),
   } : {};
 
-  let rowClass = 'card px-3 py-2.5 flex items-center gap-3 group select-none relative overflow-hidden';
+  const py = compact ? 'py-1.5' : 'py-2.5';
+  let rowClass = `card px-3 ${py} flex items-center gap-3 group select-none relative overflow-hidden`;
   if (pressing) {
     rowClass += ' long-press-active';
   }
@@ -597,15 +692,37 @@ function ItemRow({
     rowClass += ' scale-[1.04] shadow-2xl ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/40 z-50 relative';
   }
 
+  const textSize = compact ? 'text-sm' : 'font-medium';
+  const subTextSize = compact ? 'text-[10px]' : 'text-xs';
+
   return (
     <div
       data-item-id={item.id}
       data-group-id={groupId}
       className={rowClass}
-      style={isDragging ? { transition: 'none' } : { transition: 'transform 150ms ease, box-shadow 150ms ease' }}
+      style={{
+        ...(isDragging ? { transition: 'none' } : { transition: 'transform 150ms ease, box-shadow 150ms ease' }),
+        ...(swipeX !== 0 ? { transform: `translateX(${swipeX}px)`, transition: 'none' } : {}),
+      }}
       onContextMenu={(e) => { if (!reorderMode) e.preventDefault(); }}
       {...dragProps}
     >
+      {/* Swipe hint backgrounds */}
+      {swipeActions && swipeX !== 0 && (
+        <>
+          {swipeX > 0 && (
+            <div className="absolute inset-0 -z-10 flex items-center pl-4 bg-green-500 rounded-2xl">
+              <Check className="h-5 w-5 text-white" />
+            </div>
+          )}
+          {swipeX < 0 && (
+            <div className="absolute inset-0 -z-10 flex items-center justify-end pr-4 bg-red-500 rounded-2xl">
+              <Trash2 className="h-5 w-5 text-white" />
+            </div>
+          )}
+        </>
+      )}
+
       {/* Drag handle - only in reorder mode */}
       {reorderMode && !isChecked && (
         <div
@@ -620,17 +737,17 @@ function ItemRow({
       {!reorderMode && (
         <button
           onClick={() => onToggle(item)}
-          className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
+          className={`flex-shrink-0 ${compact ? 'w-5 h-5' : 'w-6 h-6'} rounded-lg border-2 flex items-center justify-center transition-all ${
             item.checked
               ? 'bg-primary-600 border-primary-600 check-animation'
               : 'border-gray-300 dark:border-gray-600 hover:border-primary-400'
           }`}
         >
-          {item.checked && <Check className="h-3.5 w-3.5 text-white" />}
+          {item.checked && <Check className={`${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'} text-white`} />}
         </button>
       )}
 
-      {/* Content area - tap to check (one-tap mode) or long press to edit */}
+      {/* Content area */}
       <div
         className={`flex-1 min-w-0${tapMode === 'one' ? ' cursor-pointer' : ''}`}
         onPointerDown={handlePointerDown}
@@ -639,30 +756,32 @@ function ItemRow({
         onPointerCancel={handlePointerUp}
         onClick={handleContentClick}
       >
-        <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
+        <div className={`${textSize} ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
           {item.name}
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-          {(item.quantity !== 1 || item.unit) && (
-            <span>
-              {item.quantity}{item.unit && ` ${item.unit}`}
-            </span>
-          )}
-          {item.category_name && (
-            <span className="flex items-center gap-1">
-              <span
-                className="w-1.5 h-1.5 rounded-full"
-                style={{ backgroundColor: item.category_color || '#6b7280' }}
-              />
-              {item.category_name}
-            </span>
-          )}
-          {item.notes && (
-            <span className="truncate max-w-[120px]" title={item.notes}>
-              {item.notes}
-            </span>
-          )}
-        </div>
+        {(!compact || item.quantity !== 1 || item.unit || item.notes) && (
+          <div className={`flex items-center gap-2 ${subTextSize} text-gray-400 dark:text-gray-500`}>
+            {(item.quantity !== 1 || item.unit) && (
+              <span>
+                {item.quantity}{item.unit && ` ${item.unit}`}
+              </span>
+            )}
+            {item.category_name && (
+              <span className="flex items-center gap-1">
+                <span
+                  className="w-1.5 h-1.5 rounded-full"
+                  style={{ backgroundColor: item.category_color || '#6b7280' }}
+                />
+                {item.category_name}
+              </span>
+            )}
+            {item.notes && (
+              <span className="truncate max-w-[120px]" title={item.notes}>
+                {item.notes}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Delete button - hidden in reorder mode */}

@@ -50,6 +50,16 @@ class PasswordChange(BaseModel):
 
 class UserPreferences(BaseModel):
     tap_mode: str = Field("two", pattern="^(one|two)$")
+    compact_mode: bool = False
+    show_categories: bool = True
+    sort_items_by: str = Field("manual", pattern="^(manual|name|date|category)$")
+    sort_checked: str = Field("bottom", pattern="^(bottom|top|hidden)$")
+    default_quantity: float = Field(1.0, ge=0)
+    confirm_before_delete: bool = True
+    auto_clear_checked_hours: int = Field(0, ge=0)  # 0 = disabled
+    vibration_feedback: bool = True
+    default_list_id: Optional[str] = None
+    swipe_actions: bool = True
 
 
 # ─── Categories ─────────────────────────────────────────────────────
