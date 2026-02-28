@@ -16,7 +16,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import {
   ArrowLeft, Trash2, Check, Settings2,
   ChevronDown, ChevronRight, UserPlus, Archive, Search,
-  GripVertical, ArrowUpDown, BookOpen,
+  GripVertical, ArrowUpDown, BookOpen, CloudUpload,
 } from 'lucide-react';
 
 export default function ListDetailPage() {
@@ -114,16 +114,23 @@ export default function ListDetailPage() {
 
   const handleToggleCheck = async (item) => {
     const updated = await api.updateItem(listId, item.id, { checked: !item.checked });
-    setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+    if (updated?._offlineQueued) {
+      // Optimistic update while offline
+      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked: !i.checked } : i)));
+    } else {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+    }
   };
 
   const handleDeleteItem = async (itemId) => {
-    await api.deleteItem(listId, itemId);
+    const result = await api.deleteItem(listId, itemId);
+    // Works the same for both online and offline — remove from UI immediately
     setItems((prev) => prev.filter((i) => i.id !== itemId));
   };
 
   const handleClearChecked = async () => {
-    await api.clearChecked(listId);
+    const result = await api.clearChecked(listId);
+    // Works the same for both online and offline
     setItems((prev) => prev.filter((i) => !i.checked));
   };
 
@@ -154,7 +161,25 @@ export default function ListDetailPage() {
         unit: '',
         category_id: fav.category_id || null,
       });
-      setItems((prev) => [...prev, item]);
+      if (item?._offlineQueued) {
+        // Optimistic add with a temporary id
+        setItems((prev) => [...prev, {
+          id: `temp-${Date.now()}`,
+          name: fav.name,
+          quantity: 1,
+          unit: '',
+          category_id: fav.category_id || null,
+          category_name: fav.category_name || null,
+          category_color: fav.category_color || null,
+          checked: false,
+          notes: '',
+          sort_order: prev.length,
+          created_at: new Date().toISOString(),
+          _pending: true,
+        }]);
+      } else {
+        setItems((prev) => [...prev, item]);
+      }
     } catch (e) {
       alert(e.message);
     }
@@ -183,14 +208,26 @@ export default function ListDetailPage() {
   const handleSaveEdit = async () => {
     if (!editItem) return;
     try {
-      const updated = await api.updateItem(listId, editItem.id, {
+      const payload = {
         name: editForm.name.trim(),
         quantity: parseFloat(editForm.quantity) || 1,
         unit: editForm.unit,
         category_id: editForm.category_id || null,
         notes: editForm.notes,
-      });
-      setItems((prev) => prev.map((i) => (i.id === editItem.id ? updated : i)));
+      };
+      const updated = await api.updateItem(listId, editItem.id, payload);
+      if (updated?._offlineQueued) {
+        // Optimistic update while offline
+        const cat = categories.find((c) => c.id === payload.category_id);
+        setItems((prev) => prev.map((i) => (i.id === editItem.id ? {
+          ...i, ...payload,
+          category_name: cat?.name || null,
+          category_color: cat?.color || null,
+          _pending: true,
+        } : i)));
+      } else {
+        setItems((prev) => prev.map((i) => (i.id === editItem.id ? updated : i)));
+      }
       setShowEditModal(false);
       setEditItem(null);
     } catch (e) {
@@ -643,11 +680,6 @@ function ItemRow({
           {item.name}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-          {(item.quantity !== 1 || item.unit) && (
-            <span>
-              {item.quantity}{item.unit && ` ${item.unit}`}
-            </span>
-          )}
           {item.category_name && (
             <span className="flex items-center gap-1">
               <span
@@ -664,6 +696,18 @@ function ItemRow({
           )}
         </div>
       </div>
+
+      {/* Quantity badge - right side for visibility */}
+      {(item.quantity !== 1 || item.unit) && (
+        <span className={`qty-badge flex-shrink-0 ${item.checked ? 'opacity-40' : ''}`}>
+          {item.quantity}{item.unit ? ` ${item.unit}` : ''}
+        </span>
+      )}
+
+      {/* Pending sync indicator */}
+      {item._pending && (
+        <CloudUpload className="h-3.5 w-3.5 flex-shrink-0 text-amber-500 animate-pulse" title="Pending sync" />
+      )}
 
       {/* Delete button - hidden in reorder mode */}
       {!reorderMode && (
