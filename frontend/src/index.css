@@ -83,6 +83,14 @@
   to { transform: scaleX(1); }
 }
 
+/* Quantity badge */
+.qty-badge {
+  @apply text-sm font-semibold tabular-nums
+    bg-primary-100 text-primary-700
+    dark:bg-primary-900/50 dark:text-primary-300
+    px-2 py-0.5 rounded-lg whitespace-nowrap;
+}
+
 /* Drag and drop highlight (touch) */
 .drag-over-highlight {
   @apply ring-2 ring-primary-400 ring-offset-1 dark:ring-offset-navy-950;

@@ -31,13 +31,30 @@ export default function ItemAddForm({ listId, categories, onItemAdded }) {
     e.preventDefault();
     if (!name.trim()) return;
     try {
-      const item = await api.createItem(listId, {
+      const payload = {
         name: name.trim(),
         quantity: parseFloat(qty) || 1,
         unit,
         category_id: categoryId || null,
-      });
-      onItemAdded(item);
+      };
+      const item = await api.createItem(listId, payload);
+      if (item?._offlineQueued) {
+        // Optimistic add with a temporary item while offline
+        const cat = categories.find((c) => c.id === categoryId);
+        onItemAdded({
+          id: `temp-${Date.now()}`,
+          ...payload,
+          category_name: cat?.name || null,
+          category_color: cat?.color || null,
+          checked: false,
+          notes: '',
+          sort_order: 999,
+          created_at: new Date().toISOString(),
+          _pending: true,
+        });
+      } else {
+        onItemAdded(item);
+      }
       setName('');
       setQty('1');
       setUnit('');
