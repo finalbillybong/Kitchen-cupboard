@@ -60,6 +60,15 @@ class ApiClient {
       return null;
     }
 
+    // Service worker queued this mutation for offline replay
+    if (response.status === 202) {
+      let data;
+      try { data = await response.json(); } catch { /* ignore */ }
+      if (data?.queued) {
+        return { _offlineQueued: true };
+      }
+    }
+
     let data;
     try {
       data = await response.json();
