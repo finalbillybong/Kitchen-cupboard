@@ -9,3 +9,9 @@ frontend/node_modules/
 dist/
 frontend/test-results/
 frontend/playwright-report/
+android/.gradle/
+android/local.properties
+android/app/build/
+*.apk
+*.aab
+!android/releases/*.apk
