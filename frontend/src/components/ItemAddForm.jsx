@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Plus, MoreHorizontal } from 'lucide-react';
 import api from '../api/client';
 
-export default function ItemAddForm({ listId, categories, onItemAdded }) {
+export default function ItemAddForm({ listId, categories, onItemAdded, onItemAddFailed }) {
   const [name, setName] = useState('');
   const [qty, setQty] = useState('1');
   const [unit, setUnit] = useState('');
@@ -30,31 +30,27 @@ export default function ItemAddForm({ listId, categories, onItemAdded }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
+    const optimisticId = crypto.randomUUID();
     try {
       const payload = {
+        id: optimisticId,
         name: name.trim(),
         quantity: parseFloat(qty) || 1,
         unit,
         category_id: categoryId || null,
       };
-      const item = await api.createItem(listId, payload);
-      if (item?._offlineQueued) {
-        // Optimistic add with a temporary item while offline
-        const cat = categories.find((c) => c.id === categoryId);
-        onItemAdded({
-          id: `temp-${Date.now()}`,
-          ...payload,
-          category_name: cat?.name || null,
-          category_color: cat?.color || null,
-          checked: false,
-          notes: '',
-          sort_order: 999,
-          created_at: new Date().toISOString(),
-          _pending: true,
-        });
-      } else {
-        onItemAdded(item);
-      }
+      const cat = categories.find((c) => c.id === categoryId);
+      onItemAdded({
+        ...payload,
+        category_name: cat?.name || null,
+        category_color: cat?.color || null,
+        checked: false,
+        notes: '',
+        sort_order: 999,
+        created_at: new Date().toISOString(),
+        _pending: true,
+      });
+      await api.createItem(listId, payload);
       setName('');
       setQty('1');
       setUnit('');
@@ -63,6 +59,7 @@ export default function ItemAddForm({ listId, categories, onItemAdded }) {
       setShowAdvanced(false);
       inputRef.current?.focus();
     } catch (e) {
+      onItemAddFailed?.(optimisticId);
       alert(e.message);
     }
   };

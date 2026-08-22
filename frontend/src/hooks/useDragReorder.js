@@ -1,12 +1,15 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import api from '../api/client';
 
-export function useDragReorder(listId, setItems) {
+export function useDragReorder(listId, items, setItems) {
   const [reorderMode, setReorderMode] = useState(false);
   const [draggingId, setDraggingId] = useState(null);
   const dragItem = useRef(null);
   const dragGroupId = useRef(null);
   const itemsContainerRef = useRef(null);
+  const beforeDrag = useRef(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const liveDragReorder = useCallback((targetItemId, groupId) => {
     const draggedId = dragItem.current;
@@ -36,19 +39,23 @@ export function useDragReorder(listId, setItems) {
 
   const persistOrder = useCallback(() => {
     const groupId = dragGroupId.current;
+    const rollback = beforeDrag.current;
     if (groupId) {
-      setItems((currentItems) => {
-        const groupItems = currentItems
-          .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
-          .sort((a, b) => a.sort_order - b.sort_order);
-        const itemIds = groupItems.map((i) => i.id);
-        api.reorderItems(listId, itemIds).catch(console.error);
-        return currentItems;
+      const currentItems = itemsRef.current;
+      const groupItems = currentItems
+        .filter((i) => !i.checked && (i.category_id || 'uncategorized') === groupId)
+        .sort((a, b) => a.sort_order - b.sort_order);
+      const itemIds = groupItems.map((i) => i.id);
+      setItems(currentItems.map((item) => itemIds.includes(item.id) ? { ...item, _pending: true } : item));
+      api.reorderItems(listId, itemIds).catch((error) => {
+        console.error(error);
+        if (rollback) setItems(rollback);
       });
     }
   }, [listId, setItems]);
 
   const handleDragStart = (e, item, groupId) => {
+    beforeDrag.current = itemsRef.current;
     dragItem.current = item.id;
     dragGroupId.current = groupId;
     setDraggingId(item.id);
@@ -66,6 +73,7 @@ export function useDragReorder(listId, setItems) {
     dragItem.current = null;
     dragGroupId.current = null;
     setDraggingId(null);
+    beforeDrag.current = null;
   };
 
   // Touch-based drag and drop (reorder mode)
@@ -84,6 +92,7 @@ export function useDragReorder(listId, setItems) {
       if (!row) return;
 
       touchDragId = row.dataset.itemId;
+      beforeDrag.current = itemsRef.current;
       lastHoverId = null;
       dragItem.current = touchDragId;
       dragGroupId.current = row.dataset.groupId;
@@ -112,6 +121,7 @@ export function useDragReorder(listId, setItems) {
       dragItem.current = null;
       dragGroupId.current = null;
       setDraggingId(null);
+      beforeDrag.current = null;
     };
 
     container.addEventListener('touchstart', handleTouchStart, { passive: true });
