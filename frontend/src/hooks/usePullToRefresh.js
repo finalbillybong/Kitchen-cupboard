@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from 'react';
 
 const THRESHOLD = 80;
 const MAX_PULL = 130;
+const CAPTURE_THRESHOLD = 24;
 
 export function usePullToRefresh(onRefresh) {
   const [pulling, setPulling] = useState(false);
@@ -35,7 +36,7 @@ export function usePullToRefresh(onRefresh) {
     setPulling(true);
     setPullDistance(dampened);
 
-    if (dampened > 10) {
+    if (dy >= CAPTURE_THRESHOLD) {
       e.preventDefault();
     }
   }, [refreshing]);

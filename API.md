@@ -126,6 +126,7 @@ POST /api/lists/{list_id}/items
 Content-Type: application/json
 
 {
+  "id": "optional-client-generated-uuid",
   "name": "Milk",
   "quantity": 2,
   "unit": "litres",
@@ -133,6 +134,8 @@ Content-Type: application/json
   "notes": "Semi-skimmed"
 }
 ```
+
+`id` is optional. When supplied, retrying the same create against the same list returns the existing item. Reusing that UUID in a different list returns `409`.
 
 **Category auto-assignment:** If `category_id` is omitted, the app checks if this item name has been used before and automatically assigns the most-used category. For example, if "Milk" was previously added under "Dairy" three times, it will auto-assign to Dairy.
 
@@ -144,6 +147,16 @@ Content-Type: application/json
 
 {
   "checked": true
+}
+```
+
+#### Clear a captured set of completed items
+
+Omit the body to retain the original “all currently checked items” behaviour, or provide IDs captured when the user initiated the action:
+
+```json
+{
+  "item_ids": ["item-uuid-1", "item-uuid-2"]
 }
 ```
 
@@ -213,6 +226,7 @@ GET /api/suggestions?q=mil
 | 401 | Not authenticated |
 | 403 | Forbidden (no permission) |
 | 404 | Not found |
+| 409 | Client-provided item UUID is already used by another list |
 
 ---
 

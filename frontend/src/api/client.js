@@ -1,3 +1,5 @@
+import { configureOutbox, enqueueMutation } from '../offline/outbox';
+
 const API_BASE = '/api';
 
 class ApiClient {
@@ -241,31 +243,51 @@ class ApiClient {
   }
 
   createItem(listId, data) {
-    return this.request(`/lists/${listId}/items`, {
+    return enqueueMutation({
+      path: `/lists/${listId}/items`,
       method: 'POST',
-      body: JSON.stringify(data),
+      body: data,
+      entityId: data.id,
+      summary: `Add “${data.name}”`,
     });
   }
 
   updateItem(listId, itemId, data) {
-    return this.request(`/lists/${listId}/items/${itemId}`, {
+    return enqueueMutation({
+      path: `/lists/${listId}/items/${itemId}`,
       method: 'PUT',
-      body: JSON.stringify(data),
+      body: data,
+      entityId: itemId,
+      summary: data.checked === undefined ? 'Edit item' : `${data.checked ? 'Complete' : 'Restore'} item`,
     });
   }
 
   deleteItem(listId, itemId) {
-    return this.request(`/lists/${listId}/items/${itemId}`, { method: 'DELETE' });
+    return enqueueMutation({
+      path: `/lists/${listId}/items/${itemId}`,
+      method: 'DELETE',
+      entityId: itemId,
+      summary: 'Delete item',
+    });
   }
 
-  clearChecked(listId) {
-    return this.request(`/lists/${listId}/items/clear-checked`, { method: 'POST' });
+  clearChecked(listId, itemIds) {
+    return enqueueMutation({
+      path: `/lists/${listId}/items/clear-checked`,
+      method: 'POST',
+      body: { item_ids: itemIds },
+      entityIds: itemIds,
+      summary: `Clear ${itemIds.length} completed item${itemIds.length === 1 ? '' : 's'}`,
+    });
   }
 
   reorderItems(listId, itemIds) {
-    return this.request(`/lists/${listId}/items/reorder`, {
+    return enqueueMutation({
+      path: `/lists/${listId}/items/reorder`,
       method: 'POST',
-      body: JSON.stringify({ item_ids: itemIds }),
+      body: { item_ids: itemIds },
+      entityIds: itemIds,
+      summary: 'Reorder items',
     });
   }
 
@@ -319,4 +341,8 @@ class ApiClient {
 }
 
 export const api = new ApiClient();
+configureOutbox({
+  getToken: () => api.token,
+  refresh: () => api.tryRefresh(),
+});
 export default api;
