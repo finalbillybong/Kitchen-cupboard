@@ -79,6 +79,17 @@ For PWA updates, configure a Cloudflare Cache Rule to bypass caching for the exa
 - **Full reference**: See [API.md](API.md)
 - **AI context endpoint**: `GET /api/context` — returns a structured summary of all capabilities
 
+## Android APK
+
+The `android/` directory contains a lightweight Android wrapper for the hosted PWA. It keeps authentication and offline data inside Android WebView storage and opens links to other sites in the device browser.
+
+Build an installable debug APK with Android SDK 35:
+
+```bash
+cd android
+./gradlew assembleDebug
+```
+
 ## Tech Stack
 
 - **Backend**: Python, FastAPI, SQLAlchemy, SQLite
