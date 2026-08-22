@@ -81,7 +81,11 @@ For PWA updates, configure a Cloudflare Cache Rule to bypass caching for the exa
 
 ## Android APK
 
-The `android/` directory contains a lightweight Android wrapper for the hosted PWA. It keeps authentication and offline data inside Android WebView storage and opens links to other sites in the device browser.
+Download the current Android installer: **[Kitchen Cupboard 1.0.1 APK](android/releases/KitchenCupboard-1.0.1.apk)**.
+
+The APK supports Android 8 or newer and includes safe spacing for modern status bars, display cutouts, keyboards, and bottom gesture navigation. Android may ask you to allow installs from the browser or file manager you use to open it.
+
+The `android/` directory contains the lightweight Android wrapper for the hosted PWA. It keeps authentication and offline data inside Android WebView storage and opens links to other sites in the device browser. The downloadable APK is a debug-signed personal build, not a Google Play release.
 
 Build an installable debug APK with Android SDK 35:
 
