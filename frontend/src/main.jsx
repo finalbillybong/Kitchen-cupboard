@@ -28,7 +28,9 @@ initializeOutbox().catch((error) => console.error('Outbox unavailable:', error))
 // Register service worker for offline app-shell and read caching.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((err) => {
+    // Version the script URL so this rollout bypasses any stale edge-cached
+    // legacy worker. Keep updateViaCache disabled for all subsequent checks.
+    navigator.serviceWorker.register('/sw.js?v=2', { updateViaCache: 'none' }).catch((err) => {
       console.warn('SW registration failed:', err);
     });
   });
