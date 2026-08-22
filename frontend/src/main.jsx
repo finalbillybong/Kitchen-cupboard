@@ -6,6 +6,7 @@ import { AuthProvider } from './hooks/useAuth';
 import { ThemeProvider } from './hooks/useTheme';
 import { PreferencesProvider } from './hooks/usePreferences';
 import './index.css';
+import { initializeOutbox } from './offline/outbox';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -21,22 +22,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
   </React.StrictMode>
 );
 
-// Register service worker for offline support
+// Migrate the legacy service-worker queue and begin ordered replay.
+initializeOutbox().catch((error) => console.error('Outbox unavailable:', error));
+
+// Register service worker for offline app-shell and read caching.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((reg) => {
-      // Replay offline queue when back online
-      window.addEventListener('online', () => {
-        reg.active?.postMessage('replay-queue');
-      });
-
-      // Listen for sync completion to refresh data
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        if (event.data?.type === 'queue-replayed') {
-          window.location.reload();
-        }
-      });
-    }).catch((err) => {
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((err) => {
       console.warn('SW registration failed:', err);
     });
   });

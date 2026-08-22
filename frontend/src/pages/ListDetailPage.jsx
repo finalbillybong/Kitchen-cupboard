@@ -13,6 +13,7 @@ import FavouritesBar from '../components/FavouritesBar';
 import ItemAddForm from '../components/ItemAddForm';
 import PullToRefresh from '../components/PullToRefresh';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { hasPendingEntity, projectPendingItems } from '../offline/outbox';
 import {
   ArrowLeft, Trash2, Check, Settings2,
   ChevronDown, ChevronRight, UserPlus, Archive, Search,
@@ -48,7 +49,7 @@ export default function ListDetailPage() {
 
   // Custom hooks
   const recipe = useRecipeImport(listId);
-  const drag = useDragReorder(listId, setItems);
+  const drag = useDragReorder(listId, items, setItems);
 
   const fetchData = useCallback(async () => {
     try {
@@ -57,8 +58,13 @@ export default function ListDetailPage() {
         api.getItems(listId),
         api.getCategories(),
       ]);
+      const projectedItems = await projectPendingItems(listId, itemsData, catsData);
       setList(listData);
-      setItems(itemsData);
+      setItems((current) => projectedItems.map((serverItem) => {
+        const local = current.find((item) => item.id === serverItem.id);
+        return local && hasPendingEntity(serverItem.id) ? local : serverItem;
+      }).concat(current.filter((item) => item._pending && hasPendingEntity(item.id)
+        && !projectedItems.some((serverItem) => serverItem.id === item.id))));
       setCategories(catsData);
     } catch (e) {
       console.error(e);
@@ -70,6 +76,16 @@ export default function ListDetailPage() {
 
   useEffect(() => {
     fetchData();
+  }, [fetchData]);
+
+  useEffect(() => {
+    const reconcile = () => fetchData();
+    window.addEventListener('kc-outbox-drained', reconcile);
+    window.addEventListener('kc-outbox-discarded', reconcile);
+    return () => {
+      window.removeEventListener('kc-outbox-drained', reconcile);
+      window.removeEventListener('kc-outbox-discarded', reconcile);
+    };
   }, [fetchData]);
 
   const ptr = usePullToRefresh(fetchData);
@@ -85,19 +101,25 @@ export default function ListDetailPage() {
 
     switch (msg.type) {
       case 'item_added':
+        if (hasPendingEntity(msg.data.id)) break;
         setItems((prev) => [...prev.filter((i) => i.id !== msg.data.id), msg.data]);
         break;
       case 'item_updated':
       case 'item_checked':
+        if (hasPendingEntity(msg.data.id)) break;
         setItems((prev) => prev.map((i) => (i.id === msg.data.id ? msg.data : i)));
         break;
       case 'item_removed':
+        if (hasPendingEntity(msg.data.id)) break;
         setItems((prev) => prev.filter((i) => i.id !== msg.data.id));
         break;
       case 'checked_cleared':
-        setItems((prev) => prev.filter((i) => !i.checked));
+        setItems((prev) => msg.data.item_ids
+          ? prev.filter((i) => !msg.data.item_ids.includes(i.id) || hasPendingEntity(i.id))
+          : prev.filter((i) => !i.checked || hasPendingEntity(i.id)));
         break;
       case 'items_reordered': {
+        if (msg.data.item_ids.some(hasPendingEntity)) break;
         const orderMap = {};
         msg.data.item_ids.forEach((id, i) => { orderMap[id] = i; });
         setItems((prev) => prev.map((item) =>
@@ -113,25 +135,37 @@ export default function ListDetailPage() {
   useWebSocket(listId, handleWsMessage);
 
   const handleToggleCheck = async (item) => {
-    const updated = await api.updateItem(listId, item.id, { checked: !item.checked });
-    if (updated?._offlineQueued) {
-      // Optimistic update while offline
-      setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked: !i.checked } : i)));
-    } else {
-      setItems((prev) => prev.map((i) => (i.id === item.id ? updated : i)));
+    const checked = !item.checked;
+    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked, _pending: true } : i)));
+    try {
+      await api.updateItem(listId, item.id, { checked });
+    } catch (error) {
+      setItems((prev) => prev.map((i) => (i.id === item.id ? item : i)));
+      alert(`Could not save the change: ${error.message}`);
     }
   };
 
   const handleDeleteItem = async (itemId) => {
-    const result = await api.deleteItem(listId, itemId);
-    // Works the same for both online and offline — remove from UI immediately
+    const snapshot = items;
     setItems((prev) => prev.filter((i) => i.id !== itemId));
+    try {
+      await api.deleteItem(listId, itemId);
+    } catch (error) {
+      setItems(snapshot);
+      alert(`Could not save the deletion: ${error.message}`);
+    }
   };
 
   const handleClearChecked = async () => {
-    const result = await api.clearChecked(listId);
-    // Works the same for both online and offline
+    const itemIds = items.filter((item) => item.checked).map((item) => item.id);
+    const snapshot = items;
     setItems((prev) => prev.filter((i) => !i.checked));
+    try {
+      await api.clearChecked(listId, itemIds);
+    } catch (error) {
+      setItems(snapshot);
+      alert(`Could not save the clear action: ${error.message}`);
+    }
   };
 
   const handleDeleteList = async () => {
@@ -154,33 +188,32 @@ export default function ListDetailPage() {
   };
 
   const handleQuickAdd = async (fav) => {
+    const id = crypto.randomUUID();
+    const optimistic = {
+      id,
+      name: fav.name,
+      quantity: 1,
+      unit: '',
+      category_id: fav.category_id || null,
+      category_name: fav.category_name || null,
+      category_color: fav.category_color || null,
+      checked: false,
+      notes: '',
+      sort_order: items.length,
+      created_at: new Date().toISOString(),
+      _pending: true,
+    };
+    setItems((prev) => [...prev, optimistic]);
     try {
-      const item = await api.createItem(listId, {
+      await api.createItem(listId, {
+        id,
         name: fav.name,
         quantity: 1,
         unit: '',
         category_id: fav.category_id || null,
       });
-      if (item?._offlineQueued) {
-        // Optimistic add with a temporary id
-        setItems((prev) => [...prev, {
-          id: `temp-${Date.now()}`,
-          name: fav.name,
-          quantity: 1,
-          unit: '',
-          category_id: fav.category_id || null,
-          category_name: fav.category_name || null,
-          category_color: fav.category_color || null,
-          checked: false,
-          notes: '',
-          sort_order: prev.length,
-          created_at: new Date().toISOString(),
-          _pending: true,
-        }]);
-      } else {
-        setItems((prev) => [...prev, item]);
-      }
     } catch (e) {
+      setItems((prev) => prev.filter((item) => item.id !== id));
       alert(e.message);
     }
   };
@@ -215,21 +248,22 @@ export default function ListDetailPage() {
         category_id: editForm.category_id || null,
         notes: editForm.notes,
       };
-      const updated = await api.updateItem(listId, editItem.id, payload);
-      if (updated?._offlineQueued) {
-        // Optimistic update while offline
-        const cat = categories.find((c) => c.id === payload.category_id);
-        setItems((prev) => prev.map((i) => (i.id === editItem.id ? {
-          ...i, ...payload,
-          category_name: cat?.name || null,
-          category_color: cat?.color || null,
-          _pending: true,
-        } : i)));
-      } else {
-        setItems((prev) => prev.map((i) => (i.id === editItem.id ? updated : i)));
-      }
+      const original = editItem;
+      const cat = categories.find((c) => c.id === payload.category_id);
+      setItems((prev) => prev.map((i) => (i.id === editItem.id ? {
+        ...i, ...payload,
+        category_name: cat?.name || null,
+        category_color: cat?.color || null,
+        _pending: true,
+      } : i)));
       setShowEditModal(false);
       setEditItem(null);
+      try {
+        await api.updateItem(listId, original.id, payload);
+      } catch (error) {
+        setItems((prev) => prev.map((item) => item.id === original.id ? original : item));
+        alert(`Could not save the edit: ${error.message}`);
+      }
     } catch (e) {
       alert(e.message);
     }
@@ -339,6 +373,7 @@ export default function ListDetailPage() {
           listId={listId}
           categories={categories}
           onItemAdded={(item) => setItems((prev) => [...prev, item])}
+          onItemAddFailed={(id) => setItems((prev) => prev.filter((item) => item.id !== id))}
         />
       )}
 
@@ -566,7 +601,7 @@ export default function ListDetailPage() {
   );
 }
 
-function ItemRow({
+export function ItemRow({
   item, groupId, onToggle, onDelete, onEdit,
   reorderMode, onDragStart, onDragEnter, onDragEnd,
   isDragging, isChecked, tapMode,
@@ -582,6 +617,7 @@ function ItemRow({
 
   const handlePointerDown = (e) => {
     if (reorderMode) return;
+    if (e.target.closest('button, [data-drag-handle]')) return;
     pointerStart.current = { x: e.clientX, y: e.clientY };
     wasLongPress.current = false;
     setPressing(true);
@@ -610,10 +646,10 @@ function ItemRow({
     setPressing(false);
   };
 
-  const handleContentClick = () => {
+  const handleRowClick = (event) => {
     if (reorderMode) return;
-    // In one-tap mode, a quick tap (not a long press) on the content toggles the check
-    if (tapMode === 'one' && !wasLongPress.current) {
+    if (event.target.closest('button, [data-drag-handle]')) return;
+    if (tapMode === 'row' && !wasLongPress.current) {
       onToggle(item);
     }
   };
@@ -641,6 +677,11 @@ function ItemRow({
       className={rowClass}
       style={isDragging ? { transition: 'none' } : { transition: 'transform 150ms ease, box-shadow 150ms ease' }}
       onContextMenu={(e) => { if (!reorderMode) e.preventDefault(); }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onClick={handleRowClick}
       {...dragProps}
     >
       {/* Drag handle - only in reorder mode */}
@@ -656,7 +697,7 @@ function ItemRow({
       {/* Checkbox - hidden in reorder mode */}
       {!reorderMode && (
         <button
-          onClick={() => onToggle(item)}
+          onClick={(event) => { event.stopPropagation(); onToggle(item); }}
           className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
             item.checked
               ? 'bg-primary-600 border-primary-600 check-animation'
@@ -667,14 +708,9 @@ function ItemRow({
         </button>
       )}
 
-      {/* Content area - tap to check (one-tap mode) or long press to edit */}
+      {/* Content area - whole-row mode toggles; long press edits in either mode. */}
       <div
-        className={`flex-1 min-w-0${tapMode === 'one' ? ' cursor-pointer' : ''}`}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-        onClick={handleContentClick}
+        className={`flex-1 min-w-0${tapMode === 'row' ? ' cursor-pointer' : ''}`}
       >
         <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
           {item.name}
@@ -712,7 +748,7 @@ function ItemRow({
       {/* Delete button - hidden in reorder mode */}
       {!reorderMode && (
         <button
-          onClick={() => onDelete(item.id)}
+          onClick={(event) => { event.stopPropagation(); onDelete(item.id); }}
           className="flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
           title="Delete"
         >

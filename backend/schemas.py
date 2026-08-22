@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -132,6 +133,7 @@ class ListShareCreate(BaseModel):
 # ─── Items ──────────────────────────────────────────────────────────
 
 class ItemCreate(BaseModel):
+    id: Optional[UUID] = None
     name: str = Field(..., min_length=1, max_length=200)
     quantity: float = 1.0
     unit: str = ""
@@ -152,6 +154,10 @@ class ItemUpdate(BaseModel):
 
 class ItemReorderRequest(BaseModel):
     item_ids: list[str] = Field(..., max_length=1000)
+
+
+class ClearCheckedRequest(BaseModel):
+    item_ids: list[str] = Field(default_factory=list, max_length=1000)
 
 
 class ItemOut(BaseModel):
