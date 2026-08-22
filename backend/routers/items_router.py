@@ -7,7 +7,7 @@ from auth import get_current_user
 from database import get_db
 from models import User, ShoppingList, ListItem, Category, ItemCategoryMemory, utcnow
 from schemas import (
-    ItemCreate, ItemUpdate, ItemOut, ItemSuggestion, ItemReorderRequest,
+    ItemCreate, ItemUpdate, ItemOut, ItemSuggestion, ItemReorderRequest, ClearCheckedRequest,
     RecipeImportRequest, RecipeImportPreview, RecipeImportResult,
 )
 from recipe_parser import fetch_recipe
@@ -123,9 +123,20 @@ async def create_item(
 ):
     check_list_access(list_id, user.id, db, require_edit=True)
 
+    # Client-provided UUIDs make create retries idempotent. A UUID already used by
+    # another list is a real collision and must never disclose the other item.
+    if data.id is not None:
+        requested_id = str(data.id)
+        existing = db.query(ListItem).filter(ListItem.id == requested_id).first()
+        if existing:
+            if existing.list_id != list_id:
+                raise HTTPException(status_code=409, detail="Item ID is already in use")
+            return _item_to_out(_load_item(requested_id, list_id, db))
+
     category_id = data.category_id or _lookup_category(data.name, db)
 
     item = ListItem(
+        id=str(data.id) if data.id is not None else None,
         list_id=list_id,
         name=data.name,
         quantity=data.quantity,
@@ -190,9 +201,10 @@ async def update_item(
         item.quantity = data.quantity
     if data.unit is not None:
         item.unit = data.unit
-    if data.category_id is not None:
+    if "category_id" in data.model_fields_set:
         item.category_id = data.category_id
-        _update_category_memory(item.name, data.category_id, db)
+        if data.category_id:
+            _update_category_memory(item.name, data.category_id, db)
     if data.checked is not None:
         item.checked = data.checked
         if data.checked:
@@ -241,16 +253,23 @@ async def delete_item(
 @router.post("/clear-checked", status_code=200)
 async def clear_checked_items(
     list_id: str,
+    data: ClearCheckedRequest | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     check_list_access(list_id, user.id, db, require_edit=True)
-    deleted = db.query(ListItem).filter(
+    query = db.query(ListItem).filter(
         ListItem.list_id == list_id, ListItem.checked == True
-    ).delete(synchronize_session=False)
+    )
+    if data is not None:
+        query = query.filter(ListItem.id.in_(data.item_ids))
+    deleted = query.delete(synchronize_session=False)
     db.commit()
 
-    await _broadcast(list_id, "checked_cleared", {"deleted_count": deleted}, user)
+    await _broadcast(list_id, "checked_cleared", {
+        "deleted_count": deleted,
+        "item_ids": data.item_ids if data is not None else None,
+    }, user)
     return {"deleted_count": deleted}
 
 

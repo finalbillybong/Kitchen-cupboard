@@ -7,3 +7,5 @@ __pycache__/
 backend/static/
 frontend/node_modules/
 dist/
+frontend/test-results/
+frontend/playwright-report/

@@ -3,13 +3,24 @@ import { createContext, useContext, useState, useCallback } from 'react';
 const STORAGE_KEY = 'kc-preferences';
 
 const defaults = {
-  tapMode: 'two', // 'one' = tap anywhere to check, 'two' = tap checkbox only (current)
+  tapMode: 'row',
 };
 
-function loadPreferences() {
+export function migratePreferences(value = {}) {
+  const tapMode = value.tapMode === 'one' ? 'row'
+    : value.tapMode === 'two' ? 'checkbox'
+      : ['row', 'checkbox'].includes(value.tapMode) ? value.tapMode : 'row';
+  return { ...defaults, ...value, tapMode };
+}
+
+export function loadPreferences() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return { ...defaults, ...JSON.parse(raw) };
+    if (raw) {
+      const migrated = migratePreferences(JSON.parse(raw));
+      savePreferences(migrated);
+      return migrated;
+    }
   } catch { /* ignore */ }
   return { ...defaults };
 }

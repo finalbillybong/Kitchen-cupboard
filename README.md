@@ -14,7 +14,7 @@ A collaborative shopping list web app built for self-hosting on Docker/Unraid.
 - **Favourites quick-add** — quickly add your most-used items from a favourites bar based on usage history
 - **Sharing** — share lists with other users as editor or viewer
 - **Dark mode** — automatic or manual toggle
-- **Offline support** — service worker caches the app shell and API responses; mutations made offline are queued and automatically replayed when connectivity returns
+- **Offline support** — Workbox precaches the app shell; item changes are applied instantly and durably replayed from a credential-free browser outbox
 - **PWA** — installable on Android and iOS home screens with a chef hat icon
 - **Recipe import** — paste a recipe URL and extract ingredients automatically; works with any site using Schema.org JSON-LD (BBC Good Food, AllRecipes, Jamie Oliver, etc)
 - **REST API** — documented API with Bearer token auth for AI agents and integrations
@@ -63,6 +63,8 @@ Since this app uses JWT-based authentication with bcrypt password hashing, it's 
 2. Set `REGISTRATION_ENABLED=false` in your environment
 3. Create the first admin account, then generate invite codes for other users
 
+For PWA updates, configure a Cloudflare Cache Rule to bypass caching for the exact path `/sw.js`. Purge the existing `/sw.js` object during rollout; the application also serves it with `no-cache`, `no-store`, and `CDN-Cache-Control: no-store` headers.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -83,5 +85,5 @@ Since this app uses JWT-based authentication with bcrypt password hashing, it's 
 - **Frontend**: React 18, Vite, Tailwind CSS
 - **Auth**: JWT + bcrypt, API keys
 - **Real-time**: WebSocket
-- **Offline**: Service worker with IndexedDB mutation queue
+- **Offline**: Workbox app-shell/read cache plus an IndexedDB browser outbox
 - **Container**: Docker (single container, multi-stage build)
