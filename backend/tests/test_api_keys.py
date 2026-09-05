@@ -187,6 +187,12 @@ def test_agent_discovery_and_openapi_are_complete(api_client):
     assert ("POST", "/api/lists/{list_id}/items/reorder") in operations
     assert ("POST", "/api/lists/{list_id}/items/import-recipe") in operations
     assert ("GET", "/api/favourites") in operations
+    assert ("GET", "/api/ingredients") in operations
+    assert ("POST", "/api/meals") in operations
+    assert ("POST", "/api/meals/{meal_id}/commit") in operations
+    assert ("GET", "/api/basics") in operations
+    assert ("POST", "/api/basics/items") in operations
+    assert ("POST", "/api/basics/commit") in operations
 
     schema = client.get("/api/openapi.json")
     assert schema.status_code == 200
@@ -212,6 +218,9 @@ def test_agent_discovery_and_openapi_are_complete(api_client):
     guide = client.get("/api/agent-guide")
     assert guide.status_code == 200
     assert "Do not send an API key" in guide.text
+    assert "Each meal ingredient row supplies exactly one" in guide.text
+    assert "POST /api/basics/items" in guide.text
+    assert "collection `expected_version`" in guide.text
     unknown = client.get("/api/does-not-exist")
     assert unknown.status_code == 404
     assert unknown.json()["detail"] in {"Not Found", "API endpoint not found"}

@@ -158,6 +158,10 @@ def _get_user_with_scope(
                 detail=f"API key missing required scope: {required_scope}",
             )
         record_api_key_use(principal, db)
+        # Route-level policies occasionally need to distinguish a signed-in
+        # administrator from an API key acting as that account. Keep that
+        # request-local fact off the persisted schema.
+        principal.user._auth_method = principal.method
         return principal.user
 
     raise HTTPException(
@@ -198,6 +202,7 @@ def get_current_user_jwt(
 
     user = _get_user_from_jwt(credentials.credentials, db)
     if user:
+        user._auth_method = "jwt"
         return user
 
     raise HTTPException(

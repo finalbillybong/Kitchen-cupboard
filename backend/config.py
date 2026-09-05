@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     REGISTER_RATE_LIMIT_WINDOW: int = 3600
     REGISTER_RATE_LIMIT_MAX: int = 5
     APP_NAME: str = "Kitchen Cupboard"
-    APP_VERSION: str = "1.0.0"
+    APP_VERSION: str = "1.1.0"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

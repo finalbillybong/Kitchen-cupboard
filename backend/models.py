@@ -177,3 +177,152 @@ class InviteCode(Base):
     is_used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=utcnow)
     expires_at = Column(DateTime, nullable=True)
+
+
+# ─── Global meal library ─────────────────────────────────────────────────
+
+
+class Ingredient(Base):
+    """One shared, case-insensitively de-duplicated ingredient."""
+
+    __tablename__ = "ingredients"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String(200), nullable=False)
+    normalized_name = Column(String(200), nullable=False, unique=True, index=True)
+    default_unit = Column(String(30), default="", nullable=False)
+    default_category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    is_archived = Column(Boolean, default=False, nullable=False, index=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    updated_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    default_category = relationship("Category")
+    creator = relationship("User", foreign_keys=[created_by])
+    updater = relationship("User", foreign_keys=[updated_by])
+
+
+class Meal(Base):
+    """A globally visible reusable recipe."""
+
+    __tablename__ = "meals"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String(200), nullable=False, index=True)
+    description = Column(Text, default="", nullable=False)
+    base_servings = Column(Integer, default=1, nullable=False)
+    source_url = Column(String(2000), nullable=True)
+    version = Column(Integer, default=1, nullable=False)
+    is_archived = Column(Boolean, default=False, nullable=False, index=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    updated_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    creator = relationship("User", foreign_keys=[created_by])
+    updater = relationship("User", foreign_keys=[updated_by])
+    ingredients = relationship(
+        "MealIngredient",
+        back_populates="meal",
+        cascade="all, delete-orphan",
+        order_by="MealIngredient.sort_order",
+    )
+
+
+class MealIngredient(Base):
+    __tablename__ = "meal_ingredients"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    meal_id = Column(String, ForeignKey("meals.id", ondelete="CASCADE"), nullable=False)
+    ingredient_id = Column(String, ForeignKey("ingredients.id"), nullable=False)
+    quantity = Column(Float, default=1.0, nullable=False)
+    unit = Column(String(30), default="", nullable=False)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    notes = Column(Text, default="", nullable=False)
+    scales_with_servings = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+
+    meal = relationship("Meal", back_populates="ingredients")
+    ingredient = relationship("Ingredient")
+    category = relationship("Category")
+
+    __table_args__ = (
+        UniqueConstraint("meal_id", "ingredient_id", name="uq_meal_ingredient"),
+        Index("ix_meal_ingredients_order", "meal_id", "sort_order"),
+    )
+
+
+class BasicsCollection(Base):
+    """The single globally shared basics checklist."""
+
+    __tablename__ = "basics_collections"
+
+    id = Column(String, primary_key=True, default="global")
+    name = Column(String(100), default="Basics", nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    updated_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    updater = relationship("User", foreign_keys=[updated_by])
+    items = relationship(
+        "BasicsItem",
+        back_populates="collection",
+        cascade="all, delete-orphan",
+        order_by="BasicsItem.sort_order",
+    )
+
+
+class BasicsItem(Base):
+    __tablename__ = "basics_items"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    collection_id = Column(
+        String, ForeignKey("basics_collections.id", ondelete="CASCADE"), default="global", nullable=False
+    )
+    ingredient_id = Column(String, ForeignKey("ingredients.id"), nullable=False)
+    quantity = Column(Float, default=1.0, nullable=False)
+    unit = Column(String(30), default="", nullable=False)
+    category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    notes = Column(Text, default="", nullable=False)
+    scales_with_servings = Column(Boolean, default=False, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    is_archived = Column(Boolean, default=False, nullable=False, index=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    updated_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+    collection = relationship("BasicsCollection", back_populates="items")
+    ingredient = relationship("Ingredient")
+    category = relationship("Category")
+    creator = relationship("User", foreign_keys=[created_by])
+    updater = relationship("User", foreign_keys=[updated_by])
+
+    __table_args__ = (
+        UniqueConstraint("collection_id", "ingredient_id", name="uq_basics_ingredient"),
+        Index("ix_basics_items_order", "collection_id", "sort_order"),
+    )
+
+
+class BulkAddReceipt(Base):
+    """Durable response for idempotent meal/Basics commits."""
+
+    __tablename__ = "bulk_add_receipts"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    request_id = Column(String(100), nullable=False)
+    source_type = Column(String(20), nullable=False)
+    source_id = Column(String, nullable=False)
+    list_id = Column(String, ForeignKey("shopping_lists.id"), nullable=False)
+    request_hash = Column(String(64), nullable=False)
+    result_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "request_id", name="uq_bulk_add_user_request"),
+    )
