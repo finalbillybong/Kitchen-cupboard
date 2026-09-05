@@ -15,10 +15,10 @@ export default function SettingsPage() {
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'preferences', label: 'Preferences', icon: SlidersHorizontal },
     { id: 'categories', label: 'Categories', icon: Tag },
+    { id: 'apikeys', label: 'API Keys', icon: Key },
   ];
 
   if (user?.is_admin) {
-    tabs.push({ id: 'apikeys', label: 'API Keys', icon: Key });
     tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 

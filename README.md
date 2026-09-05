@@ -31,12 +31,12 @@ A collaborative shopping list web app built for self-hosting on Docker/Unraid.
    cd Kitchen-cupboard
    ```
 
-2. Generate a secret key:
+2. Generate and export a secret key:
    ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+   export SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')"
    ```
 
-3. Edit `docker-compose.yml` and set your `SECRET_KEY`.
+3. Keep `SECRET_KEY` exported when running Compose, or store it in a Compose `.env` file.
 
 4. Start the app:
    ```bash
@@ -54,6 +54,7 @@ A collaborative shopping list web app built for self-hosting on Docker/Unraid.
 3. Set environment variables:
    - `SECRET_KEY`: A long random string (required for security)
    - `REGISTRATION_ENABLED`: Set to `false` to require invite codes
+   - `CORS_ORIGINS`: Optional comma-separated browser origins for cross-origin agents
 
 ## Cloudflare Tunnel
 
@@ -72,12 +73,21 @@ For PWA updates, configure a Cloudflare Cache Rule to bypass caching for the exa
 | `SECRET_KEY` | *(required)* | JWT signing key — app refuses to start without it |
 | `REGISTRATION_ENABLED` | `false` | Set `true` for open registration, `false` for invite-only |
 | `DATABASE_URL` | `sqlite:///./data/kitchen_cupboard.db` | Database connection string |
+| `CORS_ORIGINS` | *(empty)* | Optional comma-separated browser origins; CLI/server agents do not require CORS |
 
 ## API Documentation
 
 - **Interactive docs**: `http://your-server:8111/api/docs`
+- **Machine-readable OpenAPI**: `http://your-server:8111/api/openapi.json`
 - **Full reference**: See [API.md](API.md)
-- **AI context endpoint**: `GET /api/context` — returns a structured summary of all capabilities
+- **AI context endpoint**: `GET /api/context` — returns the complete operation/authentication index
+- **Plain-text agent guide**: `GET /api/agent-guide`
+
+After deployment, verify a full read/write key end to end with the self-cleaning smoke test:
+
+```bash
+KC_BASE_URL="http://your-server:8111" KC_API_KEY="kc_your_full_key" ./scripts/api-smoke.sh
+```
 
 ## Android APK
 

@@ -7,6 +7,7 @@ _INSECURE_DEFAULTS = {
     "change-me-in-production-use-a-long-random-string",
     "secret",
     "password",
+    "your_secret_key_here",
 }
 
 
@@ -19,6 +20,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
     REGISTRATION_ENABLED: bool = False
+    CORS_ORIGINS: str = ""
     LOGIN_RATE_LIMIT_WINDOW: int = 300
     LOGIN_RATE_LIMIT_MAX: int = 10
     REGISTER_RATE_LIMIT_WINDOW: int = 3600
@@ -28,10 +30,19 @@ class Settings(BaseSettings):
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
+    @property
+    def cors_origins(self) -> list[str]:
+        """Comma-separated browser origins; non-browser API clients do not need this."""
+        return [origin.strip() for origin in self.CORS_ORIGINS.split(",") if origin.strip()]
+
 
 settings = Settings()
 
-if not settings.SECRET_KEY or settings.SECRET_KEY.lower() in _INSECURE_DEFAULTS:
+if (
+    not settings.SECRET_KEY
+    or settings.SECRET_KEY.lower() in _INSECURE_DEFAULTS
+    or len(settings.SECRET_KEY) < 32
+):
     print("=" * 60, file=sys.stderr)
     print("FATAL: SECRET_KEY is not set or uses an insecure default.", file=sys.stderr)
     print("Generate a secure key with:", file=sys.stderr)

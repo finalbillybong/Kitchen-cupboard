@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 
 from access import check_list_access
-from auth import get_current_user
+from auth import get_current_user_read, get_current_user_write
 from database import get_db
 from models import User, ShoppingList, ListItem, Category, ItemCategoryMemory, utcnow
 from schemas import (
@@ -74,7 +74,13 @@ def _lookup_category(item_name: str, db: Session) -> str | None:
     memory = db.query(ItemCategoryMemory).filter(
         ItemCategoryMemory.item_name_lower == item_name.strip().lower()
     ).order_by(ItemCategoryMemory.usage_count.desc()).first()
-    return memory.category_id if memory else None
+    return memory.category_id if memory and memory.category else None
+
+
+def _validate_category(category_id: str | None, db: Session) -> None:
+    """Reject explicit category references that do not exist."""
+    if category_id and not db.query(Category.id).filter(Category.id == category_id).first():
+        raise HTTPException(status_code=422, detail="Category not found")
 
 
 async def _broadcast(list_id: str, msg_type: str, data: dict, user: User):
@@ -100,7 +106,7 @@ def _touch_list(list_id: str, db: Session):
 @router.get("", response_model=list[ItemOut])
 def get_items(
     list_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
 ):
     check_list_access(list_id, user.id, db)
@@ -118,7 +124,7 @@ def get_items(
 async def create_item(
     list_id: str,
     data: ItemCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     check_list_access(list_id, user.id, db, require_edit=True)
@@ -133,6 +139,7 @@ async def create_item(
                 raise HTTPException(status_code=409, detail="Item ID is already in use")
             return _item_to_out(_load_item(requested_id, list_id, db))
 
+    _validate_category(data.category_id, db)
     category_id = data.category_id or _lookup_category(data.name, db)
 
     item = ListItem(
@@ -164,7 +171,7 @@ async def create_item(
 async def reorder_items(
     list_id: str,
     data: ItemReorderRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     """Batch-update sort_order for items based on their position in the list."""
@@ -185,7 +192,7 @@ async def update_item(
     list_id: str,
     item_id: str,
     data: ItemUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     check_list_access(list_id, user.id, db, require_edit=True)
@@ -202,6 +209,7 @@ async def update_item(
     if data.unit is not None:
         item.unit = data.unit
     if "category_id" in data.model_fields_set:
+        _validate_category(data.category_id, db)
         item.category_id = data.category_id
         if data.category_id:
             _update_category_memory(item.name, data.category_id, db)
@@ -233,7 +241,7 @@ async def update_item(
 async def delete_item(
     list_id: str,
     item_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     check_list_access(list_id, user.id, db, require_edit=True)
@@ -254,7 +262,7 @@ async def delete_item(
 async def clear_checked_items(
     list_id: str,
     data: ClearCheckedRequest | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     check_list_access(list_id, user.id, db, require_edit=True)
@@ -289,7 +297,7 @@ async def _fetch_recipe_or_raise(url: str) -> dict:
 async def preview_recipe_import(
     list_id: str,
     data: RecipeImportRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     """Fetch a recipe URL and return parsed ingredients for preview before importing."""
@@ -302,7 +310,7 @@ async def preview_recipe_import(
 async def import_recipe(
     list_id: str,
     data: RecipeImportRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     """Fetch a recipe URL, parse ingredients, and add them all to the list."""
@@ -376,7 +384,7 @@ def _memories_to_suggestions(memories: list[ItemCategoryMemory], limit: int | No
 @suggestions_router.get("", response_model=list[ItemSuggestion])
 def get_suggestions(
     q: str = "",
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
 ):
     """Get item suggestions based on previously used items."""
@@ -403,7 +411,7 @@ favourites_router = APIRouter(prefix="/api/favourites", tags=["Favourites"])
 @favourites_router.get("", response_model=list[ItemSuggestion])
 def get_favourites(
     limit: int = 20,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
 ):
     """Get most frequently used items across all lists."""
