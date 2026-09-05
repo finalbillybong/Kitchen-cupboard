@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from auth import get_current_user
+from auth import get_current_user_read, get_current_user_write
 from database import get_db
 from models import User, Category
 from schemas import CategoryCreate, CategoryUpdate, CategoryOut
@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/categories", tags=["Categories"])
 
 @router.get("", response_model=list[CategoryOut])
 def list_categories(
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
 ):
     cats = db.query(Category).order_by(Category.sort_order, Category.name).all()
@@ -21,7 +21,7 @@ def list_categories(
 @router.post("", response_model=CategoryOut, status_code=201)
 def create_category(
     data: CategoryCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     existing = db.query(Category).filter(Category.name == data.name).first()
@@ -45,7 +45,7 @@ def create_category(
 def update_category(
     category_id: str,
     data: CategoryUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     cat = db.query(Category).filter(Category.id == category_id).first()
@@ -73,7 +73,7 @@ def update_category(
 @router.delete("/{category_id}", status_code=204)
 def delete_category(
     category_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     cat = db.query(Category).filter(Category.id == category_id).first()

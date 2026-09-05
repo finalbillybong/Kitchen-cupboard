@@ -3,7 +3,7 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session, joinedload
 
 from access import check_list_access
-from auth import get_current_user
+from auth import get_current_user_read, get_current_user_write
 from database import get_db
 from models import User, ShoppingList, ListMember, ListItem
 from schemas import (
@@ -92,7 +92,7 @@ def _list_to_out(lst: ShoppingList, db: Session) -> ListOut:
 @router.get("", response_model=list[ListOut])
 def get_lists(
     include_archived: bool = False,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
 ):
     lists = _get_user_lists(user.id, db, include_archived)
@@ -102,7 +102,7 @@ def get_lists(
 @router.post("", response_model=ListOut, status_code=201)
 def create_list(
     data: ListCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     lst = ShoppingList(
@@ -121,7 +121,7 @@ def create_list(
 @router.get("/{list_id}", response_model=ListOut)
 def get_list(
     list_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
 ):
     lst = check_list_access(list_id, user.id, db)
@@ -132,7 +132,7 @@ def get_list(
 def update_list(
     list_id: str,
     data: ListUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     lst = check_list_access(list_id, user.id, db, require_edit=True)
@@ -156,7 +156,7 @@ def update_list(
 @router.delete("/{list_id}", status_code=204)
 def delete_list(
     list_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     lst = db.query(ShoppingList).filter(
@@ -174,7 +174,7 @@ def delete_list(
 def share_list(
     list_id: str,
     data: ListShareCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     lst = db.query(ShoppingList).filter(
@@ -227,7 +227,7 @@ def share_list(
 def unshare_list(
     list_id: str,
     user_id: str,
-    user: User = Depends(get_current_user),
+    user: User = Depends(get_current_user_write),
     db: Session = Depends(get_db),
 ):
     lst = db.query(ShoppingList).filter(

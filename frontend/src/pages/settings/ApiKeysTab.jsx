@@ -7,6 +7,7 @@ export default function ApiKeysTab() {
   const [keys, setKeys] = useState([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyScopes, setNewKeyScopes] = useState('read,write');
   const [createdKey, setCreatedKey] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -22,7 +23,7 @@ export default function ApiKeysTab() {
   const handleCreate = async (e) => {
     e.preventDefault();
     try {
-      const key = await api.createApiKey(newKeyName, 'read,write');
+      const key = await api.createApiKey(newKeyName, newKeyScopes);
       setCreatedKey(key);
       setNewKeyName('');
       setShowCreate(false);
@@ -67,6 +68,11 @@ export default function ApiKeysTab() {
                 <div>
                   <span className="font-medium">{k.name}</span>
                   <span className="text-sm text-gray-400 ml-2">{k.key_prefix}...</span>
+                  <div className="text-xs text-gray-400 mt-0.5">
+                    {k.scopes === 'read' ? 'Read only' : 'Read and write'}
+                    {' · '}
+                    {k.last_used ? `Last used ${new Date(k.last_used).toLocaleString()}` : 'Never used'}
+                  </div>
                 </div>
                 <button onClick={() => handleDelete(k.id)} className="text-red-400 hover:text-red-500">
                   <Trash2 className="h-4 w-4" />
@@ -90,6 +96,20 @@ export default function ApiKeysTab() {
               placeholder="e.g. Home Assistant, ChatGPT"
               autoFocus
             />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Permissions</label>
+            <select
+              value={newKeyScopes}
+              onChange={(e) => setNewKeyScopes(e.target.value)}
+              className="input"
+            >
+              <option value="read,write">Read and write</option>
+              <option value="read">Read only</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1.5">
+              Read-only keys cannot create, change, or remove lists and items.
+            </p>
           </div>
           <div className="flex gap-3">
             <button type="button" onClick={() => setShowCreate(false)} className="btn-secondary flex-1">Cancel</button>

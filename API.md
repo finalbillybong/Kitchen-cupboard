@@ -1,273 +1,217 @@
 # Kitchen Cupboard API Reference
 
-Kitchen Cupboard exposes a REST API for programmatic access, designed for AI agents and integrations.
+Kitchen Cupboard exposes a REST API for AI agents, scripts, and integrations.
 
-Interactive docs are available at `/api/docs` (Swagger UI) and `/api/redoc` (ReDoc) when the server is running.
+## Discovery
 
-## AI Quick Start
+| URL | Purpose |
+|---|---|
+| `/api/` | Health check and links to all documentation |
+| `/api/context` | Complete machine-readable operation and authentication index |
+| `/api/agent-guide` | Plain-text agent quick start |
+| `/api/openapi.json` | Canonical OpenAPI contract |
+| `/api/docs` | Interactive Swagger UI |
+| `/api/redoc` | ReDoc interface |
+
+The live OpenAPI contract is generated from the registered application routes. Each operation includes an `x-kitchen-cupboard-auth` object stating whether it is public, JWT-only, or available to API keys and which scope it requires.
+
+## API-key quick start
+
+Create a key while signed in at **Settings > API Keys**. The complete key is shown once; the prefix displayed later is not a usable credential.
+
+An API key is not a username or password and must not be sent to `/api/auth/login`. Send it directly to resource endpoints:
+
+```http
+Authorization: Bearer kc_your_full_api_key
+```
 
 ```bash
-# Set your variables
-API_KEY="kc_your_key_here"
 BASE="http://192.168.x.x:8111"
-AUTH="Authorization: Bearer $API_KEY"
+API_KEY="kc_your_full_key"
 
-# List all shopping lists
-curl -s -H "$AUTH" $BASE/api/lists | jq '.[].name'
+# Discover available operations
+curl -s "$BASE/api/context" | jq
 
-# Get items from a list
-curl -s -H "$AUTH" $BASE/api/lists/{list_id}/items | jq '.[] | {name, checked, category_name}'
+# List every list visible to the key owner
+curl -s -H "Authorization: Bearer $API_KEY" "$BASE/api/lists" | jq
 
-# Add an item (auto-categorizes by name, e.g. "milk" → Dairy)
-curl -s -X POST -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"name": "Milk", "quantity": 2, "unit": "pints"}' \
-  $BASE/api/lists/{list_id}/items
-
-# Check off an item
-curl -s -X PUT -H "$AUTH" -H "Content-Type: application/json" \
-  -d '{"checked": true}' \
-  $BASE/api/lists/{list_id}/items/{item_id}
-
-# Delete all checked items
-curl -s -X POST -H "$AUTH" $BASE/api/lists/{list_id}/items/clear-checked
+# Add an item using an ID returned by the previous request
+curl -s -X POST \
+  -H "Authorization: Bearer $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Milk","quantity":2,"unit":"pints"}' \
+  "$BASE/api/lists/{list_id}/items" | jq
 ```
 
-Create an API key via the web UI: **Settings > API Keys > Create**.
+API keys act as the user who created them and can access only that user's owned or shared lists. List roles still apply: viewers cannot mutate a list, editors can modify it, and only owners can share or delete it.
 
----
+Scopes:
 
-## Authentication
+- `read` permits resource GET requests and read-only WebSocket subscriptions.
+- `read,write` additionally permits resource POST, PUT, and DELETE requests.
+- API keys never permit profile, password, API-key management, invitation, or administrator operations.
 
-API keys are used for programmatic/AI access. Create one via the web UI: **Settings > API Keys**.
+## Complete endpoint index
 
-```
-Authorization: Bearer kc_your_api_key_here
-```
+### Discovery and registration policy
 
-API keys can access: lists, items, categories, and suggestions.
-API keys **cannot** access: user management, password changes, API key creation, or admin endpoints. These require a web UI login session.
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `GET` | `/api/` | Public | Health and documentation links |
+| `GET` | `/api/registration-status` | Public | Registration and invitation policy |
+| `GET` | `/api/context` | Public | Machine-readable agent capability index |
+| `GET` | `/api/agent-guide` | Public | Plain-text agent guide |
 
----
+### Authentication and account management
 
-## AI Context Endpoint
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `POST` | `/api/auth/register` | Public | Register a user; an invite may be required |
+| `POST` | `/api/auth/login` | Public, username/password body | Return an access JWT and set a refresh cookie |
+| `POST` | `/api/auth/refresh` | Refresh cookie | Rotate the refresh cookie and return a new JWT |
+| `POST` | `/api/auth/logout` | Public | Clear the refresh cookie |
+| `GET` | `/api/auth/me` | JWT only | Return the signed-in user |
+| `PUT` | `/api/auth/me` | JWT only | Update the signed-in user |
+| `POST` | `/api/auth/change-password` | JWT only | Change the signed-in user's password |
+| `GET` | `/api/auth/api-keys` | JWT only | List the user's key metadata; full keys are never returned |
+| `POST` | `/api/auth/api-keys` | JWT only | Create a `read` or `read,write` key |
+| `DELETE` | `/api/auth/api-keys/{key_id}` | JWT only | Revoke one of the user's keys |
+| `GET` | `/api/auth/invite-codes` | Administrator JWT | List invitation codes |
+| `POST` | `/api/auth/invite-codes` | Administrator JWT | Create an invitation code |
+| `DELETE` | `/api/auth/invite-codes/{code_id}` | Administrator JWT | Revoke an unused invitation code |
+| `GET` | `/api/auth/users` | Administrator JWT | List users |
+| `PUT` | `/api/auth/users/{user_id}/toggle-active` | Administrator JWT | Enable or disable a user |
+| `DELETE` | `/api/auth/users/{user_id}` | Administrator JWT | Delete a user |
 
-Inspired by the [ClawBridge](https://github.com/finalbillybong/ClawBridge) API, Kitchen Cupboard provides an AI-friendly context endpoint:
+### Shopping lists
 
-```
-GET /api/context
-```
+| Method | Endpoint | API-key scope | Additional permission |
+|---|---|---|---|
+| `GET` | `/api/lists` | `read` | Returns owned and shared lists |
+| `POST` | `/api/lists` | `write` | Creates a list owned by the key owner |
+| `GET` | `/api/lists/{list_id}` | `read` | Owner, editor, or viewer |
+| `PUT` | `/api/lists/{list_id}` | `write` | Owner or editor |
+| `DELETE` | `/api/lists/{list_id}` | `write` | Owner only |
+| `POST` | `/api/lists/{list_id}/share` | `write` | Owner only |
+| `DELETE` | `/api/lists/{list_id}/share/{user_id}` | `write` | Owner only |
 
-Returns a structured summary of all API capabilities, authentication methods, and available endpoints — ideal for AI agents to understand what actions are available.
+Create a list:
 
----
-
-## Endpoints
-
-### Health Check
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/` | No | Health check and version info |
-| `GET` | `/api/context` | No | AI-friendly API context |
-
-### Shopping Lists
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/lists` | Yes | Get user's lists |
-| `POST` | `/api/lists` | Yes | Create a new list |
-| `GET` | `/api/lists/{id}` | Yes | Get list details |
-| `PUT` | `/api/lists/{id}` | Yes | Update a list |
-| `DELETE` | `/api/lists/{id}` | Yes | Delete list (owner only) |
-| `POST` | `/api/lists/{id}/share` | Yes | Share with a user |
-| `DELETE` | `/api/lists/{id}/share/{user_id}` | Yes | Remove a member |
-
-#### Create a list
-
-```
-POST /api/lists
-Content-Type: application/json
-
+```json
 {
   "name": "Weekly Groceries",
   "description": "Shopping for the week",
-  "color": "#22c55e"
+  "color": "#22c55e",
+  "icon": "shopping-cart"
 }
 ```
 
-#### Share a list
+Share a list using `role` `editor` or `viewer`:
 
-```
-POST /api/lists/{id}/share
-Content-Type: application/json
-
-{
-  "username": "partner",
-  "role": "editor"
-}
+```json
+{"username":"partner","role":"editor"}
 ```
 
-Roles: `editor` (can add/edit/check items), `viewer` (read-only)
+### List items
 
-### List Items
+| Method | Endpoint | API-key scope | Description |
+|---|---|---|---|
+| `GET` | `/api/lists/{list_id}/items` | `read` | Get every item in the list |
+| `POST` | `/api/lists/{list_id}/items` | `write` | Add an item |
+| `PUT` | `/api/lists/{list_id}/items/{item_id}` | `write` | Edit or check/uncheck an item |
+| `DELETE` | `/api/lists/{list_id}/items/{item_id}` | `write` | Remove an item |
+| `POST` | `/api/lists/{list_id}/items/reorder` | `write` | Replace item sort order using `item_ids` |
+| `POST` | `/api/lists/{list_id}/items/clear-checked` | `write` | Delete all checked items or a captured set |
+| `POST` | `/api/lists/{list_id}/items/import-recipe/preview` | `write` | Parse a recipe URL without adding items |
+| `POST` | `/api/lists/{list_id}/items/import-recipe` | `write` | Parse a recipe URL and add its ingredients |
 
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/lists/{id}/items` | Yes | Get all items in a list |
-| `POST` | `/api/lists/{id}/items` | Yes | Add item to list |
-| `PUT` | `/api/lists/{id}/items/{item_id}` | Yes | Update an item |
-| `DELETE` | `/api/lists/{id}/items/{item_id}` | Yes | Remove an item |
-| `POST` | `/api/lists/{id}/items/clear-checked` | Yes | Clear all checked items |
+Create an item:
 
-#### Add an item
-
-```
-POST /api/lists/{list_id}/items
-Content-Type: application/json
-
+```json
 {
   "id": "optional-client-generated-uuid",
   "name": "Milk",
   "quantity": 2,
   "unit": "litres",
-  "category_id": "uuid-of-dairy-category",
-  "notes": "Semi-skimmed"
+  "category_id": "optional-category-uuid",
+  "notes": "Semi-skimmed",
+  "sort_order": 0
 }
 ```
 
-`id` is optional. When supplied, retrying the same create against the same list returns the existing item. Reusing that UUID in a different list returns `409`.
+When `id` is supplied, retrying the same create against the same list returns the existing item. Reusing that UUID in a different list returns `409`. If `category_id` is omitted, Kitchen Cupboard uses remembered category history when possible.
 
-**Category auto-assignment:** If `category_id` is omitted, the app checks if this item name has been used before and automatically assigns the most-used category. For example, if "Milk" was previously added under "Dairy" three times, it will auto-assign to Dairy.
-
-#### Check/uncheck an item
-
-```
-PUT /api/lists/{list_id}/items/{item_id}
-Content-Type: application/json
-
-{
-  "checked": true
-}
-```
-
-#### Clear a captured set of completed items
-
-Omit the body to retain the original “all currently checked items” behaviour, or provide IDs captured when the user initiated the action:
+Update requests contain only changed fields. For example:
 
 ```json
-{
-  "item_ids": ["item-uuid-1", "item-uuid-2"]
-}
+{"checked":true}
 ```
 
-### Categories
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/categories` | Yes | List all categories |
-| `POST` | `/api/categories` | Yes | Create custom category |
-| `PUT` | `/api/categories/{id}` | Yes | Update a category |
-| `DELETE` | `/api/categories/{id}` | Yes | Delete (custom only) |
-
-Default categories: Fruit & Veg, Dairy, Meat & Fish, Bakery, Frozen, Drinks, Snacks, Household, Personal Care, Tinned & Jars, Pasta & Rice, Condiments, Other.
-
-#### Create a custom category
-
-```
-POST /api/categories
-Content-Type: application/json
-
-{
-  "name": "Pet Supplies",
-  "color": "#f97316",
-  "sort_order": 15
-}
-```
-
-### Item Suggestions
-
-| Method | Endpoint | Auth | Description |
-|--------|----------|------|-------------|
-| `GET` | `/api/suggestions?q={query}` | Yes | Search item history |
-
-Returns previously used item names with their most common category, useful for autocomplete.
-
-```
-GET /api/suggestions?q=mil
-```
+Reorder items:
 
 ```json
-[
-  {
-    "name": "Milk",
-    "category_id": "uuid",
-    "category_name": "Dairy",
-    "usage_count": 5
-  },
-  {
-    "name": "Mildred's Oat Drink",
-    "category_id": "uuid",
-    "category_name": "Drinks",
-    "usage_count": 2
-  }
-]
+{"item_ids":["first-item-uuid","second-item-uuid"]}
 ```
 
----
+Clear a captured set of checked items, or omit the body to clear every currently checked item:
 
-## HTTP Status Codes
+```json
+{"item_ids":["checked-item-uuid"]}
+```
+
+Preview or import a recipe:
+
+```json
+{"url":"https://example.com/recipe"}
+```
+
+### Categories, suggestions, and favourites
+
+| Method | Endpoint | API-key scope | Description |
+|---|---|---|---|
+| `GET` | `/api/categories` | `read` | List default and custom categories |
+| `POST` | `/api/categories` | `write` | Create a custom category |
+| `PUT` | `/api/categories/{category_id}` | `write` | Update a category created by this user |
+| `DELETE` | `/api/categories/{category_id}` | `write` | Delete a category created by this user |
+| `GET` | `/api/suggestions?q={query}` | `read` | Search remembered items and categories |
+| `GET` | `/api/favourites?limit={limit}` | `read` | Return frequently used items |
+
+Default categories cannot be modified or deleted. A custom category can be changed only by its creator.
+
+Create a category:
+
+```json
+{"name":"Pet Supplies","icon":"tag","color":"#f97316","sort_order":15}
+```
+
+### WebSocket updates
+
+Connect to `WS /ws/{list_id}` and send authentication as the first message so the credential is not exposed in query-string logs:
+
+```json
+{"type":"auth","token":"kc_your_full_api_key"}
+```
+
+A JWT or API key with `read` scope is accepted. The authenticated user must have access to the list. The server responds with `{"type":"auth_ok"}` and then publishes item/list events. Send the text `ping` to receive `pong`.
+
+## Status codes
 
 | Code | Meaning |
-|------|---------|
-| 200 | Success |
-| 201 | Created |
-| 204 | Deleted (no content) |
-| 400 | Bad request / validation error |
-| 401 | Not authenticated |
-| 403 | Forbidden (no permission) |
-| 404 | Not found |
-| 409 | Client-provided item UUID is already used by another list |
+|---|---|
+| `200` | Successful read or update |
+| `201` | Resource created |
+| `204` | Resource deleted; no response body |
+| `400` | Request violates an application rule |
+| `401` | Credentials are missing, invalid, expired, revoked, or not accepted by this endpoint |
+| `403` | API-key scope, list role, owner, or administrator permission is missing |
+| `404` | Resource does not exist or is deliberately hidden from this user |
+| `409` | Client-supplied item UUID belongs to another list |
+| `422` | Request data failed validation or referenced category does not exist |
 
----
+Error bodies use FastAPI's `detail` field:
 
-## Example: Python AI Agent
-
-```python
-import requests
-
-BASE = "http://192.168.x.x:8111"
-HEADERS = {"Authorization": "Bearer kc_your_api_key_here"}
-
-# Get all lists
-lists = requests.get(f"{BASE}/api/lists", headers=HEADERS).json()
-list_id = lists[0]["id"]
-
-# Add items to a list (auto-categorizes by name)
-for item in ["Milk", "Bread", "Chicken", "Bananas", "Eggs"]:
-    requests.post(
-        f"{BASE}/api/lists/{list_id}/items",
-        headers=HEADERS,
-        json={"name": item},
-    )
-
-# Get unchecked items
-items = requests.get(f"{BASE}/api/lists/{list_id}/items", headers=HEADERS).json()
-unchecked = [i for i in items if not i["checked"]]
-
-# Check off an item by name
-milk = next(i for i in items if i["name"].lower() == "milk")
-requests.put(
-    f"{BASE}/api/lists/{list_id}/items/{milk['id']}",
-    headers=HEADERS,
-    json={"checked": True},
-)
-
-# Get items grouped by category
-from itertools import groupby
-items.sort(key=lambda x: x["category_name"] or "Uncategorized")
-for cat, group in groupby(items, key=lambda x: x["category_name"] or "Uncategorized"):
-    print(f"\n{cat}:")
-    for item in group:
-        status = "x" if item["checked"] else " "
-        print(f"  [{status}] {item['name']} ({item['quantity']} {item['unit']})")
+```json
+{"detail":"API key missing required scope: write"}
 ```
+
+Validation failures use an array in the same `detail` field. Refer to `/api/openapi.json` for exact request and response schemas.
