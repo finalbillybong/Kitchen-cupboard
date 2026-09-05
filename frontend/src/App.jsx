@@ -6,6 +6,7 @@ import RegisterPage from './pages/RegisterPage';
 import ListsPage from './pages/ListsPage';
 import ListDetailPage from './pages/ListDetailPage';
 import SettingsPage from './pages/SettingsPage';
+import LibraryPage from './pages/LibraryPage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -54,6 +55,7 @@ export default function App() {
       >
         <Route index element={<ListsPage />} />
         <Route path="list/:listId" element={<ListDetailPage />} />
+        <Route path="library" element={<LibraryPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

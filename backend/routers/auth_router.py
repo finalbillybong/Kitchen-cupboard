@@ -17,7 +17,10 @@ from auth import (
 )
 from config import settings
 from database import get_db
-from models import User, ApiKey, AuditLog, InviteCode, ShoppingList, ListMember, ListItem, utcnow
+from models import (
+    User, ApiKey, AuditLog, InviteCode, ShoppingList, ListMember, ListItem, utcnow,
+    Ingredient, Meal, BasicsCollection, BasicsItem, BulkAddReceipt,
+)
 from rate_limit import login_limiter, register_limiter
 from schemas import (
     UserCreate,
@@ -415,6 +418,33 @@ def delete_user(
 
     # Delete API keys
     db.query(ApiKey).filter(ApiKey.user_id == user_id).delete(synchronize_session=False)
+
+    # Preserve shared-library records and their attribution when an account is
+    # removed. The administrator performing the deletion becomes their steward.
+    db.query(Ingredient).filter(Ingredient.created_by == user_id).update(
+        {Ingredient.created_by: admin.id}, synchronize_session=False
+    )
+    db.query(Ingredient).filter(Ingredient.updated_by == user_id).update(
+        {Ingredient.updated_by: admin.id}, synchronize_session=False
+    )
+    db.query(Meal).filter(Meal.created_by == user_id).update(
+        {Meal.created_by: admin.id}, synchronize_session=False
+    )
+    db.query(Meal).filter(Meal.updated_by == user_id).update(
+        {Meal.updated_by: admin.id}, synchronize_session=False
+    )
+    db.query(BasicsItem).filter(BasicsItem.created_by == user_id).update(
+        {BasicsItem.created_by: admin.id}, synchronize_session=False
+    )
+    db.query(BasicsItem).filter(BasicsItem.updated_by == user_id).update(
+        {BasicsItem.updated_by: admin.id}, synchronize_session=False
+    )
+    db.query(BasicsCollection).filter(BasicsCollection.updated_by == user_id).update(
+        {BasicsCollection.updated_by: admin.id}, synchronize_session=False
+    )
+    db.query(BulkAddReceipt).filter(BulkAddReceipt.user_id == user_id).delete(
+        synchronize_session=False
+    )
 
     # Nullify audit log references (keep the logs for the audit trail)
     db.query(AuditLog).filter(AuditLog.user_id == user_id).update(

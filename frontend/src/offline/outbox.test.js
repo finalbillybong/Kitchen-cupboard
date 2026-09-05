@@ -91,4 +91,29 @@ describe('browser outbox', () => {
 
     for (const op of await outbox.getOutboxOperations()) await outbox.discardOperation(op.key);
   });
+
+  it('projects an idempotent library commit using the same smart-merge rules', async () => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    const body = {
+      list_id: 'list-1', target_servings: 4, source_version: 2,
+      selected_source_row_ids: ['salt-row', 'carrot-row'], request_id: 'request-1234',
+    };
+    await outbox.enqueueMutation({
+      path: '/meals/meal-1/commit', method: 'POST', body, summary: 'Add meal',
+      projection: [
+        { source_row_id: 'salt-row', name: ' Salt ', quantity: 2, unit: 'PINCH', notes: 'new' },
+        { source_row_id: 'carrot-row', name: 'Carrots', quantity: 500, unit: 'g', notes: '' },
+      ],
+    });
+    const projected = await outbox.projectPendingItems('list-1', [{
+      id: 'salt-item', name: 'salt', quantity: 1, unit: 'pinch', checked: true,
+      notes: 'preserved', category_id: 'category-1',
+    }]);
+    expect(projected[0]).toMatchObject({
+      id: 'salt-item', quantity: 3, checked: false, notes: 'preserved', category_id: 'category-1', _pending: true,
+    });
+    expect(projected[1]).toMatchObject({ name: 'Carrots', quantity: 500, unit: 'g', _pending: true });
+
+    for (const op of await outbox.getOutboxOperations()) await outbox.discardOperation(op.key);
+  });
 });

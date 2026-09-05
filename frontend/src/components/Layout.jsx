@@ -4,7 +4,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import ErrorBoundary from './ErrorBoundary';
 import { retryOperation, discardOperation } from '../offline/outbox';
-import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat, WifiOff, CloudUpload, AlertTriangle, RotateCw, X } from 'lucide-react';
+import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat, WifiOff, CloudUpload, AlertTriangle, RotateCw, X, Library } from 'lucide-react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -31,6 +31,15 @@ export default function Layout() {
             >
               <ShoppingCart className="h-4 w-4" />
               <span className="hidden sm:inline">Lists</span>
+            </Link>
+            <Link
+              to="/library"
+              className={`btn-ghost flex items-center gap-2 text-sm ${
+                location.pathname === '/library' ? 'text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-950/40' : ''
+              }`}
+            >
+              <Library className="h-4 w-4" />
+              <span className="hidden sm:inline">Library</span>
             </Link>
             <Link
               to="/settings"

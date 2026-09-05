@@ -74,12 +74,13 @@ function extractEntityId(path = '') {
 async function records() {
   const db = await openOutbox();
   const tx = db.transaction(STORE, 'readonly');
+  const done = transactionDone(tx);
   const store = tx.objectStore(STORE);
   const [values, keys] = await Promise.all([
     requestResult(store.getAll()),
     requestResult(store.getAllKeys()),
   ]);
-  await transactionDone(tx);
+  await done;
   return values.map((value, index) => ({ ...value, key: keys[index] }));
 }
 
@@ -88,7 +89,11 @@ export const getOutboxOperations = records;
 export async function projectPendingItems(listId, canonicalItems, categories = []) {
   let items = canonicalItems.map((item) => ({ ...item }));
   const prefix = `/lists/${listId}/items`;
-  const ops = (await records()).filter((op) => op.path?.startsWith(prefix));
+  const ops = (await records()).filter((op) => (
+    op.path?.startsWith(prefix)
+    || op.path?.match(/^\/meals\/[^/]+\/commit$/)
+    || op.path === '/basics/commit'
+  ));
 
   for (const op of ops) {
     let body = {};
@@ -135,6 +140,45 @@ export async function projectPendingItems(listId, canonicalItems, categories = [
       items = items.map((item) => order.has(item.id)
         ? { ...item, sort_order: order.get(item.id), _pending: true }
         : item);
+    } else if (op.method === 'POST'
+      && (op.path?.match(/^\/meals\/[^/]+\/commit$/) || op.path === '/basics/commit')
+      && body.list_id === listId && Array.isArray(op.projection)) {
+      for (const row of op.projection) {
+        const normalizedName = row.name.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+        const normalizedUnit = (row.unit || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+        const matchIndex = items.findIndex((item) => (
+          item.name.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === normalizedName
+          && (item.unit || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase() === normalizedUnit
+        ));
+        if (matchIndex >= 0) {
+          const match = items[matchIndex];
+          items[matchIndex] = {
+            ...match,
+            quantity: Math.round((Number(match.quantity) + Number(row.quantity)) * 1000) / 1000,
+            checked: false,
+            checked_by: null,
+            checked_at: null,
+            _pending: true,
+          };
+        } else {
+          const category = categories.find((entry) => entry.id === row.category_id);
+          items.push({
+            id: `pending-${body.request_id}-${row.source_row_id}`,
+            list_id: listId,
+            name: row.name,
+            quantity: row.quantity,
+            unit: row.unit || '',
+            category_id: row.category_id || null,
+            category_name: row.category_name || category?.name || null,
+            category_color: category?.color || null,
+            checked: false,
+            notes: row.notes || '',
+            sort_order: items.length,
+            created_at: new Date(op.timestamp).toISOString(),
+            _pending: true,
+          });
+        }
+      }
     }
   }
   return items;
@@ -154,15 +198,17 @@ async function emit() {
 async function put(key, value) {
   const db = await openOutbox();
   const tx = db.transaction(STORE, 'readwrite');
+  const done = transactionDone(tx);
   tx.objectStore(STORE).put(value, key);
-  await transactionDone(tx);
+  await done;
 }
 
 async function remove(key) {
   const db = await openOutbox();
   const tx = db.transaction(STORE, 'readwrite');
+  const done = transactionDone(tx);
   tx.objectStore(STORE).delete(key);
-  await transactionDone(tx);
+  await done;
 }
 
 export function configureOutbox(nextAuth) {
@@ -185,7 +231,7 @@ export function hasPendingEntity(entityId) {
   return pendingEntities.has(entityId);
 }
 
-export async function enqueueMutation({ path, method, body, entityId, entityIds, summary }) {
+export async function enqueueMutation({ path, method, body, entityId, entityIds, summary, projection }) {
   const entry = {
     path,
     method,
@@ -193,14 +239,16 @@ export async function enqueueMutation({ path, method, body, entityId, entityIds,
     entityId: entityId || extractEntityId(path),
     entityIds: entityIds || (entityId || extractEntityId(path) ? [entityId || extractEntityId(path)] : []),
     summary,
+    projection,
     timestamp: Date.now(),
     attempts: 0,
     status: 'pending',
   };
   const db = await openOutbox();
   const tx = db.transaction(STORE, 'readwrite');
+  const done = transactionDone(tx);
   const key = await requestResult(tx.objectStore(STORE).add(entry));
-  await transactionDone(tx);
+  await done;
   entry.entityIds.forEach((id) => pendingEntities.add(id));
   await emit();
   if (navigator.onLine) void flushOutbox();

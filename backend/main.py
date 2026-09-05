@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from auth import api_key_has_scope, record_api_key_use, resolve_token
 from config import settings
 from database import engine, get_db, Base
-from models import User, ListMember, ShoppingList
+from models import User, ListMember, ShoppingList, BasicsCollection
 from seed import seed_categories
 from websocket_manager import manager
 from routers import (
@@ -21,6 +21,9 @@ from routers import (
     items_router,
     suggestions_router,
     favourites_router,
+    ingredients_router,
+    meals_router,
+    basics_router,
 )
 
 # Ensure data directory exists
@@ -32,11 +35,15 @@ Base.metadata.create_all(bind=engine)
 # Seed default categories
 db = next(get_db())
 seed_categories(db)
+if not db.query(BasicsCollection).filter(BasicsCollection.id == "global").first():
+    db.add(BasicsCollection(id="global", name="Basics"))
+    db.commit()
 db.close()
 
 API_DESCRIPTION = """
-Kitchen Cupboard's REST API supports shopping lists, items, categories, suggestions,
-favourites, sharing, and recipe imports.
+Kitchen Cupboard's REST API supports shopping lists plus a global ingredient,
+meal, and Basics library. Global records are shared by every active user while
+shopping-list ownership and sharing remain list-specific.
 
 **Agent authentication:** create an API key while signed in, then send the full key
 directly on resource requests as `Authorization: Bearer kc_...`. Do not send an API
@@ -55,6 +62,9 @@ TAGS_METADATA = [
     {"name": "Categories", "description": "Read default categories and manage user-created categories."},
     {"name": "Suggestions", "description": "Search remembered item/category combinations."},
     {"name": "Favourites", "description": "Retrieve frequently used items."},
+    {"name": "Ingredients", "description": "Browse and manage the shared ingredient catalogue."},
+    {"name": "Meals", "description": "Browse, manage, preview, and add shared meals."},
+    {"name": "Basics", "description": "Manage and add the single shared Basics checklist."},
 ]
 
 
@@ -121,6 +131,9 @@ app.include_router(lists_router)
 app.include_router(items_router)
 app.include_router(suggestions_router)
 app.include_router(favourites_router)
+app.include_router(ingredients_router)
+app.include_router(meals_router)
+app.include_router(basics_router)
 
 
 # ─── Health / Context ───────────────────────────────────────────────
@@ -224,9 +237,17 @@ def ai_context(request: Request):
             "Item suggestions based on history",
             "Frequently used item favourites",
             "Recipe preview and ingredient import",
+            "Shared ingredient catalogue and reusable meals",
+            "Shared Basics checklist",
+            "Idempotent meal/Basics preview and selected-row addition",
         ],
         "permissions": {
             "lists": "A key acts as its owner and can only see that user's owned or shared lists.",
+            "global_library": (
+                "Every active user and read-scoped key can view active ingredients, meals, and Basics. "
+                "Write-scoped credentials can create and edit them. Only a record creator or admin can "
+                "archive it; restoration and archived-record views require an administrator JWT."
+            ),
             "roles": {
                 "owner": "Full list access, including deletion and sharing.",
                 "editor": "Can read and modify items and list details.",
@@ -278,6 +299,43 @@ Content-Type: application/json
 
 {"name":"Milk","quantity":2,"unit":"pints"}
 ```
+
+Global library workflow
+1. `GET /api/meals` or `GET /api/basics`; these records are shared by all active users.
+2. `POST /api/meals/{meal_id}/preview` with `{"list_id":"...","target_servings":4}`.
+3. Keep the desired `source_row_id` values from the preview.
+4. `POST /api/meals/{meal_id}/commit` with the same servings, the returned `source_version`,
+   `selected_source_row_ids`, and a new client-generated `request_id` UUID.
+5. Retry the identical commit with the same request ID after a lost response. Different data with
+   a reused ID, or a changed source version, returns 409.
+
+Basics uses the same workflow at `/api/basics/preview` and `/api/basics/commit`.
+Matching normalized names and units merge quantities; a different unit creates another list row.
+Existing notes/category are retained and a checked match is restored to unchecked.
+
+Ingredient and meal authoring
+- `GET /api/ingredients?q=...` searches the shared catalogue by normalized name.
+- Create a meal with `POST /api/meals`. Its `ingredients` array is ordered and must not contain
+  the same catalogue ingredient twice.
+- Each meal ingredient row supplies exactly one of `ingredient_id` (reuse a catalogue entry) or
+  `name` (case-insensitively reuse or create one), plus optional `quantity`, `unit`, `category_id`,
+  `notes`, and `scales_with_servings` fields.
+- `PUT /api/meals/{meal_id}` requires `expected_version` and atomically replaces the meal metadata
+  and complete ordered ingredient array. Preserve rows you still want in the request.
+
+Basics authoring
+- `GET /api/basics` returns the singleton collection, its collection `version`, and ordered `items`.
+- Add an item with `POST /api/basics/items`, supplying the collection `expected_version`, exactly
+  one of `ingredient_id` or `name`, and the same quantity/unit/category/notes/scaling fields used
+  by a meal ingredient row. A catalogue ingredient can occur only once in Basics.
+- `PUT` or `DELETE /api/basics/items/{item_id}` uses that item's `expected_version`.
+- `POST /api/basics/reorder` uses the collection `expected_version` and every active item ID once.
+
+Global permissions
+- Active users and `read` keys can browse active global records.
+- Active users and `read,write` keys can create and edit them.
+- Only the creator or an administrator can archive a record.
+- Archived views and restore operations require an administrator JWT; API keys cannot restore.
 
 Use the returned list and item IDs rather than guessing them. Successful creates return 201.
 Authentication failures return 401, missing scope or list-role permission returns 403, inaccessible resources return 404, and invalid request data returns 422.
@@ -362,13 +420,25 @@ def custom_openapi():
                 }
             if accepted not in (["public"], ["refresh_cookie"]):
                 operation["responses"]["403"] = {"$ref": "#/components/responses/Forbidden"}
-            if "{list_id}" in route.path or "{item_id}" in route.path or "{category_id}" in route.path:
+            if any(parameter in route.path for parameter in (
+                "{list_id}", "{item_id}", "{category_id}", "{ingredient_id}", "{meal_id}",
+            )):
                 operation.setdefault("responses", {})["404"] = {
                     "$ref": "#/components/responses/NotFound"
                 }
             if route.name == "create_item":
                 operation.setdefault("responses", {})["409"] = {
                     "description": "The client-provided item UUID is already used by another list.",
+                    "content": {"application/json": {"schema": {"$ref": "#/components/schemas/APIError"}}},
+                }
+            if route.name in {
+                "update_ingredient", "archive_ingredient", "restore_ingredient",
+                "update_meal", "archive_meal", "restore_meal", "update_basics_item",
+                "archive_basics_item", "restore_basics_item", "reorder_basics",
+                "commit_meal_add", "commit_basics_add",
+            }:
+                operation.setdefault("responses", {})["409"] = {
+                    "description": "Optimistic source version conflict or idempotency-key conflict.",
                     "content": {"application/json": {"schema": {"$ref": "#/components/schemas/APIError"}}},
                 }
 

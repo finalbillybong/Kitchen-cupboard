@@ -84,7 +84,10 @@ class ApiClient {
         : Array.isArray(data.detail)
           ? data.detail.map(e => e.msg || e).join(', ')
           : 'Request failed';
-      throw new Error(message);
+      const error = new Error(message);
+      error.status = response.status;
+      error.detail = data.detail;
+      throw error;
     }
 
     return data;
@@ -337,6 +340,145 @@ class ApiClient {
   // Favourites
   getFavourites(limit = 20) {
     return this.request(`/favourites?limit=${limit}`);
+  }
+
+  // Global library. Successful reads are cached so the library remains
+  // browsable while disconnected; mutations are deliberately handled by the
+  // UI only while online, except idempotent add-to-list commits.
+  async cachedLibraryRead(path, cacheKey) {
+    try {
+      const data = await this.request(path);
+      localStorage.setItem(`kc-library-${cacheKey}`, JSON.stringify(data));
+      return data;
+    } catch (error) {
+      const cached = localStorage.getItem(`kc-library-${cacheKey}`);
+      if (cached && (typeof navigator === 'undefined' || !navigator.onLine || error instanceof TypeError)) {
+        return JSON.parse(cached);
+      }
+      throw error;
+    }
+  }
+
+  getIngredients(query = '', includeArchived = false) {
+    const suffix = `?q=${encodeURIComponent(query)}&include_archived=${includeArchived}`;
+    return this.cachedLibraryRead(`/ingredients${suffix}`, `ingredients-${query}-${includeArchived}`);
+  }
+
+  createIngredient(data) {
+    return this.request('/ingredients', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  updateIngredient(id, data) {
+    return this.request(`/ingredients/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  archiveIngredient(id, expectedVersion) {
+    return this.request(`/ingredients/${id}`, {
+      method: 'DELETE', body: JSON.stringify({ expected_version: expectedVersion }),
+    });
+  }
+
+  restoreIngredient(id, expectedVersion) {
+    return this.request(`/ingredients/${id}/restore`, {
+      method: 'POST', body: JSON.stringify({ expected_version: expectedVersion }),
+    });
+  }
+
+  getMeals(query = '', includeArchived = false) {
+    const suffix = `?q=${encodeURIComponent(query)}&include_archived=${includeArchived}`;
+    return this.cachedLibraryRead(`/meals${suffix}`, `meals-${query}-${includeArchived}`);
+  }
+
+  createMeal(data) {
+    return this.request('/meals', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  updateMeal(id, data) {
+    return this.request(`/meals/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  archiveMeal(id, expectedVersion) {
+    return this.request(`/meals/${id}`, {
+      method: 'DELETE', body: JSON.stringify({ expected_version: expectedVersion }),
+    });
+  }
+
+  restoreMeal(id, expectedVersion) {
+    return this.request(`/meals/${id}/restore`, {
+      method: 'POST', body: JSON.stringify({ expected_version: expectedVersion }),
+    });
+  }
+
+  previewMeal(id, listId, targetServings) {
+    return this.request(`/meals/${id}/preview`, {
+      method: 'POST', body: JSON.stringify({ list_id: listId, target_servings: targetServings }),
+    });
+  }
+
+  commitMeal(id, data, projection) {
+    return enqueueMutation({
+      path: `/meals/${id}/commit`, method: 'POST', body: data, projection,
+      entityIds: projection.map((row) => row.existing_item_id || `pending-${data.request_id}-${row.source_row_id}`),
+      summary: `Add meal ingredients to a list`,
+    });
+  }
+
+  previewMealRecipe(url, baseServings = 1) {
+    return this.request('/meals/import-recipe/preview', {
+      method: 'POST', body: JSON.stringify({ url, base_servings: baseServings }),
+    });
+  }
+
+  createMealFromRecipe(url, baseServings = 1) {
+    return this.request('/meals/import-recipe', {
+      method: 'POST', body: JSON.stringify({ url, base_servings: baseServings }),
+    });
+  }
+
+  getBasics(includeArchived = false) {
+    return this.cachedLibraryRead(
+      `/basics?include_archived=${includeArchived}`, `basics-${includeArchived}`,
+    );
+  }
+
+  createBasicsItem(data) {
+    return this.request('/basics/items', { method: 'POST', body: JSON.stringify(data) });
+  }
+
+  updateBasicsItem(id, data) {
+    return this.request(`/basics/items/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+  }
+
+  archiveBasicsItem(id, expectedVersion) {
+    return this.request(`/basics/items/${id}`, {
+      method: 'DELETE', body: JSON.stringify({ expected_version: expectedVersion }),
+    });
+  }
+
+  restoreBasicsItem(id, expectedVersion) {
+    return this.request(`/basics/items/${id}/restore`, {
+      method: 'POST', body: JSON.stringify({ expected_version: expectedVersion }),
+    });
+  }
+
+  reorderBasics(itemIds, expectedVersion) {
+    return this.request('/basics/reorder', {
+      method: 'POST', body: JSON.stringify({ item_ids: itemIds, expected_version: expectedVersion }),
+    });
+  }
+
+  previewBasics(listId, targetServings = 1) {
+    return this.request('/basics/preview', {
+      method: 'POST', body: JSON.stringify({ list_id: listId, target_servings: targetServings }),
+    });
+  }
+
+  commitBasics(data, projection) {
+    return enqueueMutation({
+      path: '/basics/commit', method: 'POST', body: data, projection,
+      entityIds: projection.map((row) => row.existing_item_id || `pending-${data.request_id}-${row.source_row_id}`),
+      summary: 'Add Basics items to a list',
+    });
   }
 }
 

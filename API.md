@@ -184,6 +184,125 @@ Create a category:
 {"name":"Pet Supplies","icon":"tag","color":"#f97316","sort_order":15}
 ```
 
+### Global library
+
+Ingredients, meals, and the single Basics checklist are global: every authenticated active user sees the same active records. A `read` key can browse and preview them, while a `read,write` key can create, edit, archive when permitted, and commit selected rows to a list. A global record may be archived only by its creator or an administrator. Archived-record views and all restore operations require an administrator JWT, never an API key.
+
+All global edits use optimistic versions. Send the currently returned `expected_version`; stale writes return `409` and must be reviewed against the latest resource. Archived ingredients remain visible through existing meal rows but cannot be chosen for new rows.
+
+#### Ingredients
+
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `GET` | `/api/ingredients?q=` | `read` | Search active ingredients |
+| `POST` | `/api/ingredients` | `write` | Create a normalized global ingredient |
+| `GET` | `/api/ingredients/{ingredient_id}` | `read` | Read one ingredient |
+| `PUT` | `/api/ingredients/{ingredient_id}` | `write` | Edit using `expected_version` |
+| `DELETE` | `/api/ingredients/{ingredient_id}` | `write`, creator/admin | Archive using an `ArchiveRequest` body |
+| `POST` | `/api/ingredients/{ingredient_id}/restore` | Admin JWT | Restore using `expected_version` |
+
+Ingredient names are trimmed, internal whitespace is collapsed, and matching is case-insensitive. The normalized value is unique.
+
+```json
+{"name":"Chickpeas","default_unit":"g","default_category_id":null}
+```
+
+```json
+{"expected_version":1,"name":"Tinned chickpeas","default_unit":"tin"}
+```
+
+#### Meals
+
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `GET` | `/api/meals?q=` | `read` | Search active reusable meals |
+| `POST` | `/api/meals` | `write` | Create a meal and ordered ingredient rows |
+| `GET` | `/api/meals/{meal_id}` | `read` | Read a meal and its rows |
+| `PUT` | `/api/meals/{meal_id}` | `write` | Atomically replace metadata and all rows |
+| `DELETE` | `/api/meals/{meal_id}` | `write`, creator/admin | Archive with `expected_version` |
+| `POST` | `/api/meals/{meal_id}/restore` | Admin JWT | Restore an archived meal |
+| `POST` | `/api/meals/import-recipe/preview` | `write` | Parse a URL without saving |
+| `POST` | `/api/meals/import-recipe` | `write` | Parse a URL and save it as a global meal |
+| `POST` | `/api/meals/{meal_id}/preview` | `read` | Preview scaling and destination matches |
+| `POST` | `/api/meals/{meal_id}/commit` | `write`, list editor | Idempotently add selected rows |
+
+Meal names do not need to be unique. An ingredient row supplies exactly one of `ingredient_id` or `name`. A name reuses an existing catalogue record case-insensitively, or creates one in the same transaction. The same catalogue ingredient cannot occur twice in a meal.
+
+```json
+{
+  "name": "Tomato pasta",
+  "description": "A quick supper",
+  "base_servings": 2,
+  "ingredients": [
+    {"name":"Pasta","quantity":200,"unit":"g","scales_with_servings":true},
+    {"name":"Salt","quantity":1,"unit":"pinch","scales_with_servings":false}
+  ]
+}
+```
+
+A full meal update sends the same document plus `expected_version`. The replacement is atomic.
+
+#### Basics
+
+| Method | Endpoint | Authentication | Description |
+|---|---|---|---|
+| `GET` | `/api/basics` | `read` | Read the singleton and ordered active entries |
+| `POST` | `/api/basics/items` | `write` | Add an entry using the collection `expected_version` |
+| `PUT` | `/api/basics/items/{item_id}` | `write` | Edit an entry using its `expected_version` |
+| `DELETE` | `/api/basics/items/{item_id}` | `write`, creator/admin | Archive an entry |
+| `POST` | `/api/basics/items/{item_id}/restore` | Admin JWT | Restore an entry |
+| `POST` | `/api/basics/reorder` | `write` | Replace active order using the collection version |
+| `POST` | `/api/basics/preview` | `read` | Preview destination matches |
+| `POST` | `/api/basics/commit` | `write`, list editor | Idempotently add selected entries |
+
+The same ingredient cannot occur twice in Basics. Reorder requests must contain every active item ID exactly once.
+
+Add a catalogue ingredient to Basics using the version returned by `GET /api/basics`:
+
+```json
+{
+  "expected_version": 3,
+  "ingredient_id": "catalogue-ingredient-id",
+  "quantity": 2,
+  "unit": "tins",
+  "category_id": null,
+  "notes": "",
+  "scales_with_servings": false
+}
+```
+
+Supply `name` instead of `ingredient_id` to case-insensitively reuse or create a catalogue entry. Item updates and archives use the item's own version; adding and reordering use the Basics collection version.
+
+#### Preview and commit workflow
+
+Preview a meal for four servings:
+
+```http
+POST /api/meals/{meal_id}/preview
+Authorization: Bearer kc_full_key
+Content-Type: application/json
+
+{"list_id":"destination-list-id","target_servings":4}
+```
+
+Every preview row has a stable `source_row_id`, scaled quantity, `matches_existing`, and `selected`. New rows default to selected; detected destination matches default to unselected. Non-scalable rows retain their quantity. Basics uses the same request at `/api/basics/preview`; its target servings acts as a multiplier from one.
+
+Commit a subset using the exact returned source version:
+
+```json
+{
+  "list_id": "destination-list-id",
+  "target_servings": 4,
+  "source_version": 3,
+  "selected_source_row_ids": ["meal-row-id"],
+  "request_id": "9ad1ab0e-31ea-4fc6-bc42-a13ba7342893"
+}
+```
+
+Generate one request ID on the client and retain it for all retries of that logical commit. An identical retry returns the stored original result and does not add quantities twice. Reusing the ID with different data returns `409`. A changed meal/Basics source version also returns `409` so an agent cannot silently apply a recipe it did not preview.
+
+Smart merging compares normalized ingredient name and unit without converting units. Same-unit matches have their quantities added and are restored to unchecked if necessary; their existing category and notes remain. A different unit creates a separate appended row. New category priority is row override, catalogue default, then remembered item category.
+
 ### WebSocket updates
 
 Connect to `WS /ws/{list_id}` and send authentication as the first message so the credential is not exposed in query-string logs:
@@ -205,7 +324,7 @@ A JWT or API key with `read` scope is accepted. The authenticated user must have
 | `401` | Credentials are missing, invalid, expired, revoked, or not accepted by this endpoint |
 | `403` | API-key scope, list role, owner, or administrator permission is missing |
 | `404` | Resource does not exist or is deliberately hidden from this user |
-| `409` | Client-supplied item UUID belongs to another list |
+| `409` | ID reuse, optimistic version, archived-edit, or bulk idempotency conflict |
 | `422` | Request data failed validation or referenced category does not exist |
 
 Error bodies use FastAPI's `detail` field:
