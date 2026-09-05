@@ -236,13 +236,13 @@ def change_password(
     return {"message": "Password changed successfully"}
 
 
-# ─── API Keys (admin only) ─────────────────────────────────────────
+# ─── API Keys (JWT session required) ───────────────────────────────
 
 @router.post("/api-keys", response_model=ApiKeyCreated, status_code=201)
 def create_api_key(
     data: ApiKeyCreate,
     request: Request,
-    user: User = Depends(get_current_admin_jwt),
+    user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db),
 ):
     raw_key = generate_api_key()
@@ -265,7 +265,7 @@ def create_api_key(
 
 @router.get("/api-keys", response_model=list[ApiKeyOut])
 def list_api_keys(
-    user: User = Depends(get_current_admin_jwt),
+    user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db),
 ):
     keys = db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
@@ -276,7 +276,7 @@ def list_api_keys(
 def delete_api_key(
     key_id: str,
     request: Request,
-    user: User = Depends(get_current_admin_jwt),
+    user: User = Depends(get_current_user_jwt),
     db: Session = Depends(get_db),
 ):
     key = db.query(ApiKey).filter(ApiKey.id == key_id, ApiKey.user_id == user.id).first()

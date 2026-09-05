@@ -46,9 +46,15 @@
       <Name>REGISTRATION_ENABLED</Name>
       <Mode/>
     </Variable>
+    <Variable>
+      <Value></Value>
+      <Name>CORS_ORIGINS</Name>
+      <Mode/>
+    </Variable>
   </Environment>
   <Config Name="Web UI Port" Target="8000" Default="8111" Mode="tcp" Description="Port for the web interface." Type="Port" Display="always" Required="true" Mask="false">8111</Config>
   <Config Name="Data Path" Target="/app/data" Default="/mnt/user/appdata/kitchen-cupboard" Mode="rw" Description="Path to store the SQLite database and application data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/kitchen-cupboard</Config>
   <Config Name="Secret Key" Target="SECRET_KEY" Default="**CHANGE_ME**" Description="REQUIRED: A long random string used for JWT signing. Generate with: python -c 'import secrets; print(secrets.token_urlsafe(64))'. The app will not start without this." Type="Variable" Display="always" Required="true" Mask="true">**CHANGE_ME**</Config>
   <Config Name="Registration Enabled" Target="REGISTRATION_ENABLED" Default="false" Description="Set to 'true' to allow open registration. Default is 'false' (invite-only mode). Enable temporarily for initial setup, then disable." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="CORS Origins" Target="CORS_ORIGINS" Default="" Description="Optional comma-separated browser origins allowed to call the API. Leave empty for same-origin only; command-line and server-side agents do not require this." Type="Variable" Display="advanced-hide" Required="false" Mask="false"></Config>
 </Container>
