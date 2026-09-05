@@ -1,5 +1,6 @@
 import hashlib
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -15,7 +16,23 @@ from database import get_db
 from models import User, ApiKey, utcnow
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-security = HTTPBearer(auto_error=False)
+security = HTTPBearer(
+    auto_error=False,
+    bearerFormat="JWT or kc_ API key",
+    description=(
+        "Use the JWT returned by /api/auth/login for the web application, or "
+        "send a full kc_ API key directly. API keys are not exchanged at the login endpoint."
+    ),
+)
+
+
+@dataclass
+class AuthPrincipal:
+    """The user and credential type resolved from a Bearer token."""
+
+    user: User
+    method: str
+    api_key: Optional[ApiKey] = None
 
 
 def hash_password(password: str) -> str:
@@ -85,40 +102,38 @@ def _get_user_from_api_key(token: str, db: Session) -> Optional[tuple[User, ApiK
     user = db.query(User).filter(User.id == api_key.user_id, User.is_active == True).first()
     if user is None:
         return None
-    # Update last_used without committing; the caller's transaction will persist it.
-    api_key.last_used = utcnow()
-    db.flush()
     return user, api_key
 
 
-def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db),
-) -> User:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = credentials.credentials
-
-    # Try JWT first
+def resolve_token(token: str, db: Session) -> Optional[AuthPrincipal]:
+    """Resolve a JWT or API key without applying endpoint-specific authorization."""
     user = _get_user_from_jwt(token, db)
     if user:
-        return user
+        return AuthPrincipal(user=user, method="jwt")
 
-    # Try API key
     result = _get_user_from_api_key(token, db)
     if result:
-        return result[0]
+        user, api_key = result
+        return AuthPrincipal(user=user, method="api_key", api_key=api_key)
+    return None
 
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid or expired token",
-        headers={"WWW-Authenticate": "Bearer"},
+
+def api_key_has_scope(principal: AuthPrincipal, required_scope: str) -> bool:
+    """JWTs have every user scope; API keys have their explicitly stored scopes."""
+    if principal.method == "jwt":
+        return True
+    scopes = {scope.strip() for scope in (principal.api_key.scopes or "").split(",")}
+    return required_scope in scopes
+
+
+def record_api_key_use(principal: AuthPrincipal, db: Session) -> None:
+    """Persist API-key usage independently of whether the route mutates data."""
+    if principal.api_key is None:
+        return
+    db.query(ApiKey).filter(ApiKey.id == principal.api_key.id).update(
+        {ApiKey.last_used: utcnow()}, synchronize_session=False
     )
+    db.commit()
 
 
 def _get_user_with_scope(
@@ -135,22 +150,15 @@ def _get_user_with_scope(
 
     token = credentials.credentials
 
-    # JWT users have all scopes
-    user = _get_user_from_jwt(token, db)
-    if user:
-        return user
-
-    # API key users - check scope
-    result = _get_user_from_api_key(token, db)
-    if result:
-        user, api_key = result
-        scopes = [s.strip() for s in api_key.scopes.split(",")]
-        if required_scope not in scopes:
+    principal = resolve_token(token, db)
+    if principal:
+        if not api_key_has_scope(principal, required_scope):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"API key missing required scope: {required_scope}",
             )
-        return user
+        record_api_key_use(principal, db)
+        return principal.user
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -173,14 +181,6 @@ def get_current_user_write(
 ) -> User:
     """Auth that requires 'write' scope for API keys."""
     return _get_user_with_scope(credentials, db, required_scope="write")
-
-
-def get_current_admin(user: User = Depends(get_current_user)) -> User:
-    if not user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
-        )
-    return user
 
 
 def get_current_user_jwt(

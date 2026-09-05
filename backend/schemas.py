@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -57,6 +57,12 @@ class CategoryCreate(BaseModel):
     color: str = "#6b7280"
     sort_order: int = 0
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"name": "Pet Supplies", "icon": "tag", "color": "#f97316", "sort_order": 15}]
+        }
+    }
+
 
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
@@ -85,6 +91,17 @@ class ListCreate(BaseModel):
     description: str = ""
     color: str = "#6366f1"
     icon: str = "shopping-cart"
+
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "name": "Weekly Groceries",
+                "description": "Shopping for the week",
+                "color": "#22c55e",
+                "icon": "shopping-cart",
+            }]
+        }
+    }
 
 
 class ListUpdate(BaseModel):
@@ -129,6 +146,8 @@ class ListShareCreate(BaseModel):
     username: str
     role: str = Field("editor", pattern="^(editor|viewer)$")
 
+    model_config = {"json_schema_extra": {"examples": [{"username": "partner", "role": "editor"}]}}
+
 
 # ─── Items ──────────────────────────────────────────────────────────
 
@@ -141,6 +160,12 @@ class ItemCreate(BaseModel):
     notes: str = ""
     sort_order: int = 0
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{"name": "Milk", "quantity": 2, "unit": "pints", "notes": "Semi-skimmed"}]
+        }
+    }
+
 
 class ItemUpdate(BaseModel):
     name: Optional[str] = None
@@ -151,9 +176,15 @@ class ItemUpdate(BaseModel):
     notes: Optional[str] = None
     sort_order: Optional[int] = None
 
+    model_config = {"json_schema_extra": {"examples": [{"checked": True}]}}
+
 
 class ItemReorderRequest(BaseModel):
     item_ids: list[str] = Field(..., max_length=1000)
+
+    model_config = {
+        "json_schema_extra": {"examples": [{"item_ids": ["first-item-uuid", "second-item-uuid"]}]}
+    }
 
 
 class ClearCheckedRequest(BaseModel):
@@ -188,7 +219,17 @@ class ItemOut(BaseModel):
 
 class ApiKeyCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    scopes: str = "read,write"
+    scopes: Literal["read", "read,write"] = Field(
+        "read,write",
+        description=(
+            "read permits GET requests; read,write also permits resource mutations. "
+            "API keys never permit account or admin operations."
+        ),
+    )
+
+    model_config = {
+        "json_schema_extra": {"examples": [{"name": "My shopping agent", "scopes": "read,write"}]}
+    }
 
 
 class ApiKeyOut(BaseModel):
@@ -238,6 +279,10 @@ class ItemSuggestion(BaseModel):
 
 class RecipeImportRequest(BaseModel):
     url: str = Field(..., min_length=10, max_length=2000)
+
+    model_config = {
+        "json_schema_extra": {"examples": [{"url": "https://example.com/recipe"}]}
+    }
 
 
 class RecipeIngredientOut(BaseModel):

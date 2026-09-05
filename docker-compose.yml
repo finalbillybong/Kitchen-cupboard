@@ -12,7 +12,9 @@ services:
     environment:
       # REQUIRED: Must be a long random string. The app will refuse to start without it.
       # Generate one with: python -c "import secrets; print(secrets.token_urlsafe(64))"
-      - SECRET_KEY=YOUR_SECRET_KEY_HERE
+      - SECRET_KEY=${SECRET_KEY:?Set SECRET_KEY to a random value of at least 32 characters}
       # Registration is disabled by default (invite codes required).
       # Set to "true" only for initial setup, then disable.
       - REGISTRATION_ENABLED=false
+      # Optional comma-separated origins for browser-based agents. CLI/server agents do not need CORS.
+      - CORS_ORIGINS=${CORS_ORIGINS:-}
