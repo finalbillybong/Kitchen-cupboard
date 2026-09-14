@@ -4,7 +4,7 @@ import { useTheme } from '../hooks/useTheme';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import ErrorBoundary from './ErrorBoundary';
 import { retryOperation, discardOperation } from '../offline/outbox';
-import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat, WifiOff, CloudUpload, AlertTriangle, RotateCw, X, Library } from 'lucide-react';
+import { ShoppingCart, Settings, LogOut, Sun, Moon, ChefHat, WifiOff, CloudUpload, AlertTriangle, RotateCw, X, Library, CalendarDays, BookOpen } from 'lucide-react';
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -32,6 +32,8 @@ export default function Layout() {
               <ShoppingCart className="h-4 w-4" />
               <span className="hidden sm:inline">Lists</span>
             </Link>
+            <Link to="/planner" aria-label="Planner" className="btn-ghost flex items-center gap-2 text-sm"><CalendarDays className="h-4 w-4" /><span className="hidden sm:inline">Planner</span></Link>
+            <Link to="/recipes" aria-label="Recipes" className="btn-ghost flex items-center gap-2 text-sm"><BookOpen className="h-4 w-4" /><span className="hidden sm:inline">Recipes</span></Link>
             <Link
               to="/library"
               className={`btn-ghost flex items-center gap-2 text-sm ${

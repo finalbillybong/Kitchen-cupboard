@@ -6,6 +6,7 @@ import PreferencesTab from './settings/PreferencesTab';
 import ApiKeysTab from './settings/ApiKeysTab';
 import CategoriesTab from './settings/CategoriesTab';
 import AdminTab from './settings/AdminTab';
+import IntegrationsTab from './settings/IntegrationsTab';
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -19,6 +20,7 @@ export default function SettingsPage() {
   ];
 
   if (user?.is_admin) {
+    tabs.push({ id: 'integrations', label: 'Integrations', icon: SlidersHorizontal });
     tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 
@@ -48,6 +50,7 @@ export default function SettingsPage() {
       {tab === 'apikeys' && <ApiKeysTab />}
       {tab === 'categories' && <CategoriesTab />}
       {tab === 'admin' && <AdminTab />}
+      {tab === 'integrations' && user?.is_admin && <IntegrationsTab />}
     </div>
   );
 }

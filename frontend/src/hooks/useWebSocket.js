@@ -58,7 +58,9 @@ export function useWebSocket(listId, onMessage) {
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) {
         if (wsRef.current._pingInterval) clearInterval(wsRef.current._pingInterval);
+        wsRef.current.onclose = null;
         wsRef.current.close();
+        wsRef.current = null;
       }
     };
   }, [connect]);

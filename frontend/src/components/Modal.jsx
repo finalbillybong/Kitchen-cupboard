@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
-export default function Modal({ open, onClose, title, children, wide = false }) {
+export default function Modal({ open, onClose, title, children, error, wide = false }) {
   const overlayRef = useRef(null);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export default function Modal({ open, onClose, title, children, wide = false }) 
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-5 py-4 overflow-y-auto">{children}</div>
+        <div className="px-5 py-4 overflow-y-auto">{error && <p role="alert" className="text-red-600 mb-3">{error}</p>}{children}</div>
       </div>
     </div>
   );

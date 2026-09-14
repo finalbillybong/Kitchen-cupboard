@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Archive, ArrowDown, ArrowUp, BookOpen, Check, ChefHat, Edit3, ListChecks,
   Package, Plus, RefreshCw, RotateCcw, Search, Trash2, Upload,
@@ -7,13 +7,14 @@ import {
 import api from '../api/client';
 import Modal from '../components/Modal';
 import { useAuth } from '../hooks/useAuth';
+import { useWebSocket } from '../hooks/useWebSocket';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
-const emptyMeal = { name: '', description: '', base_servings: 2, source_url: null, ingredients: [] };
+const emptyMeal = { steps: [], tags: [], prep_minutes: 0, cook_minutes: 0, recipe_category: '', allow_weekly_repeat: false, name: '', description: '', base_servings: 2, source_url: null, ingredients: [] };
 const emptyRow = { ingredient_id: '', name: '', quantity: 1, unit: '', category_id: '', notes: '', scales_with_servings: true };
 
 function qty(value) {
-  return Number(Number(value).toFixed(3)).toString();
+  return value == null ? 'to taste' : Number(Number(value).toFixed(3)).toString();
 }
 
 function attribution(record) {
@@ -79,9 +80,9 @@ function RowEditor({ row, ingredients, categories, onChange, onRemove, onMoveUp,
         type="number"
         min="0.001"
         step="0.001"
-        value={row.quantity}
+        value={row.quantity ?? ''}
         onChange={(event) => onChange({ ...row, quantity: event.target.value })}
-        required
+        placeholder="Unknown / to taste"
       />
       <input
         aria-label="Unit"
@@ -123,20 +124,23 @@ function RowEditor({ row, ingredients, categories, onChange, onRemove, onMoveUp,
   );
 }
 
-function MealEditor({ open, meal, ingredients, categories, online, onClose, onSaved, onError }) {
-  const [form, setForm] = useState(emptyMeal);
+export function MealEditor({ open, meal, ingredients, categories, online, onClose, onSaved, onError }) {
+  const [form, setForm] = useState(() => ({ ...emptyMeal, ingredients: [{ ...emptyRow }] }));
   const [saving, setSaving] = useState(false);
+  const [editorError, setEditorError] = useState('');
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
+    setEditorError('');
     setForm(meal ? {
+      ...meal,
       name: meal.name,
       description: meal.description,
       base_servings: meal.base_servings,
       source_url: meal.source_url,
       ingredients: meal.ingredients.map((row) => ({
-        ingredient_id: row.ingredient_id,
-        name: '',
+        ingredient_id: row.ingredient_id || '',
+        name: row.ingredient_id ? '' : row.name,
         quantity: row.quantity,
         unit: row.unit,
         category_id: row.category_id || '',
@@ -144,7 +148,7 @@ function MealEditor({ open, meal, ingredients, categories, online, onClose, onSa
         scales_with_servings: row.scales_with_servings,
       })),
     } : { ...emptyMeal, ingredients: [{ ...emptyRow }] });
-  }, [open, meal]);
+  }, [open, meal?.id]);
 
   const save = async (event) => {
     event.preventDefault();
@@ -155,19 +159,20 @@ function MealEditor({ open, meal, ingredients, categories, online, onClose, onSa
       base_servings: Number(form.base_servings),
       ingredients: form.ingredients.map((row) => ({
         ...(row.ingredient_id ? { ingredient_id: row.ingredient_id } : { name: row.name.trim() }),
-        quantity: Number(row.quantity),
+        quantity: row.quantity === '' || row.quantity == null ? null : Number(row.quantity),
         unit: row.unit,
         category_id: row.category_id || null,
         notes: row.notes,
         scales_with_servings: row.scales_with_servings,
       })),
-      ...(meal ? { expected_version: meal.version } : {}),
+      ...(meal?.id ? { expected_version: form.version } : {}),
     };
     try {
-      await (meal ? api.updateMeal(meal.id, payload) : api.createMeal(payload));
-      onSaved();
+      const saved = await (meal?.id ? api.updateMeal(meal.id, payload) : api.createMeal(payload));
+      onSaved(saved);
       onClose();
     } catch (error) {
+      setEditorError(error.message);
       onError(error);
     } finally {
       setSaving(false);
@@ -175,10 +180,16 @@ function MealEditor({ open, meal, ingredients, categories, online, onClose, onSa
   };
 
   return (
-    <Modal open={open} onClose={onClose} title={meal ? 'Edit meal' : 'New meal'} wide>
+    <Modal error={editorError} open={open} onClose={onClose} title={meal ? 'Edit meal' : 'New meal'} wide>
       <form onSubmit={save} className="space-y-4">
         <input aria-label="Meal name" className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Meal name" required autoFocus />
         <textarea aria-label="Meal description" className="input" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Description" />
+        <label className="block">Method (one step per line)<textarea aria-label="Method" className="input" value={(form.steps || []).join('\n')} onChange={e => setForm({...form, steps: e.target.value.split('\n')})} /></label>
+        <label className="block">Recipe category<input aria-label="Recipe category" className="input" value={form.recipe_category || ''} onChange={e => setForm({...form, recipe_category: e.target.value})} /></label>
+        <label className="block">Tags (comma separated; use vegetarian or fish for planning)<input aria-label="Recipe tags" className="input" value={(form.tags || []).join(',')} onChange={e => setForm({...form, tags: e.target.value.split(',')})} /></label>
+        <div className="grid grid-cols-2 gap-2">{['prep_minutes', 'cook_minutes'].map(key => <label key={key}>{key === 'prep_minutes' ? 'Prep minutes' : 'Cook minutes'}<input className="input" type="number" min="0" value={form[key] || 0} onChange={e => setForm({...form, [key]: Number(e.target.value)})} /></label>)}</div>
+        <label className="block"><input type="checkbox" checked={form.allow_weekly_repeat || false} onChange={e => setForm({...form, allow_weekly_repeat: e.target.checked})} /> Allow weekly repeat</label>
+        <label className="block">Source URL<input className="input" value={form.source_url || ''} onChange={e => setForm({...form, source_url: e.target.value || null})} /></label>
         <label className="block text-sm font-medium">
           Base servings
           <input className="input mt-1" type="number" min="1" value={form.base_servings} onChange={(event) => setForm({ ...form, base_servings: event.target.value })} required />
@@ -248,7 +259,7 @@ function AddToListModal({ open, source, sourceType, lists, online, onClose, onQu
       rows: rows.map((row) => ({
         ...row,
         source_row_id: row.id,
-        quantity: row.scales_with_servings ? Math.round(row.quantity * factor * 1000) / 1000 : row.quantity,
+        quantity: row.quantity != null && row.scales_with_servings ? Math.round(row.quantity * factor * 1000) / 1000 : row.quantity,
         selected: true,
         matches_existing: false,
       })),
@@ -395,6 +406,7 @@ export default function LibraryPage() {
   }, [showArchived, user?.is_admin]);
 
   useEffect(() => { load(); }, [load]);
+  useWebSocket('shared', load);
 
   const reportError = (mutationError) => {
     setError(mutationError.status === 409
@@ -470,7 +482,9 @@ export default function LibraryPage() {
   const importRecipe = async () => {
     try {
       if (!recipePreview) {
-        setRecipePreview(await api.previewMealRecipe(recipeUrl));
+        const draft = await api.request('/recipes/import/url', {method: 'POST', body: JSON.stringify({url: recipeUrl})});
+        setRecipeOpen(false);
+        setMealEditor({open: true, meal: draft});
       } else {
         await api.createMealFromRecipe(recipeUrl);
         setRecipeOpen(false);
@@ -520,14 +534,14 @@ export default function LibraryPage() {
         <section>
           <div className="flex justify-end gap-2 mb-4">
             <button className="btn-secondary flex items-center gap-2" disabled={!online} onClick={() => setRecipeOpen(true)}><Upload className="h-4 w-4" /> Recipe URL</button>
-            <button className="btn-primary flex items-center gap-2" disabled={!online} onClick={() => setMealEditor({ open: true, meal: null })}><Plus className="h-4 w-4" /> New meal</button>
+            <button className="btn-primary flex items-center gap-2" disabled={!online} onClick={() => setMealEditor({ open: true, meal: null })}><Plus className="h-4 w-4" /> New meal</button><Link className="btn-secondary" to="/recipes">Browse & import recipes</Link>
           </div>
           <div className="grid gap-3">
             {filteredMeals.map((meal) => (
               <article key={meal.id} className={`card p-4 ${meal.is_archived ? 'opacity-60' : ''}`}>
                 <div className="flex gap-3">
                   <div className="flex-1 min-w-0">
-                    <h2 className="font-semibold text-lg flex items-center gap-2">{meal.name} {meal.is_archived && <Archive className="h-4 w-4" />}</h2>
+                    <h2 className="font-semibold text-lg flex items-center gap-2"><Link to={`/recipes/${meal.id}`}>{meal.name}</Link> {meal.is_archived && <Archive className="h-4 w-4" />}</h2>
                     {meal.description && <p className="text-sm text-gray-500 mt-1">{meal.description}</p>}
                     <p className="text-sm mt-2">Serves {meal.base_servings} · {meal.ingredients.length} ingredient{meal.ingredients.length === 1 ? '' : 's'}</p>
                     <p className="text-xs text-gray-400 mt-2">{attribution(meal)} · Version {meal.version}</p>

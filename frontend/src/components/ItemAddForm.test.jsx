@@ -24,3 +24,15 @@ describe('optimistic item creation', () => {
     await waitFor(() => expect(screen.getByPlaceholderText('Add an item...')).toHaveValue(''));
   });
 });
+
+it('finishing persistence does not erase the next item being typed', async () => {
+  let finish;
+  api.createItem.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  render(<ItemAddForm listId="list-1" categories={[]} onItemAdded={vi.fn()} />);
+  const input = screen.getByPlaceholderText('Add an item...');
+  fireEvent.change(input, { target: { value: 'Milk' } });
+  fireEvent.submit(input.closest('form'));
+  fireEvent.change(input, { target: { value: 'Bread' } });
+  finish({});
+  await waitFor(() => expect(input).toHaveValue('Bread'));
+});

@@ -172,6 +172,7 @@ class ItemUpdate(BaseModel):
     quantity: Optional[float] = None
     unit: Optional[str] = None
     category_id: Optional[str] = None
+    already_have: Optional[bool] = None
     checked: Optional[bool] = None
     notes: Optional[str] = None
     sort_order: Optional[int] = None
@@ -195,12 +196,13 @@ class ItemOut(BaseModel):
     id: str
     list_id: str
     name: str
-    quantity: float
+    quantity: Optional[float]
     unit: str
     category_id: Optional[str]
     category_name: Optional[str] = None
     category_color: Optional[str] = None
     category_icon: Optional[str] = None
+    already_have: bool = False
     checked: bool
     checked_by: Optional[str]
     checked_at: Optional[datetime]
@@ -287,7 +289,7 @@ class RecipeImportRequest(BaseModel):
 
 class RecipeIngredientOut(BaseModel):
     name: str
-    quantity: float
+    quantity: Optional[float]
     unit: str
 
 
@@ -360,7 +362,7 @@ class ArchiveRequest(BaseModel):
 class MealIngredientInput(BaseModel):
     ingredient_id: Optional[str] = None
     name: Optional[str] = Field(None, min_length=1, max_length=200)
-    quantity: float = Field(1.0, gt=0)
+    quantity: Optional[float] = Field(None, gt=0, allow_inf_nan=False)
     unit: str = Field("", max_length=30)
     category_id: Optional[str] = None
     notes: str = ""
@@ -374,6 +376,26 @@ class MealIngredientInput(BaseModel):
 
 
 class MealCreate(BaseModel):
+    steps: list[str] = Field(default_factory=list, max_length=500)
+    tags: list[str] = Field(default_factory=list, max_length=100)
+    recipe_category: str = Field("", max_length=100)
+    prep_minutes: int = Field(0, ge=0, le=10080)
+    cook_minutes: int = Field(0, ge=0, le=10080)
+    allow_weekly_repeat: bool = False
+    image_ids: list[str] = Field(default_factory=list, max_length=6)
+
+    @model_validator(mode='after')
+    def recipe_fields_valid(self):
+        self.tags = list(dict.fromkeys(tag.strip().casefold() for tag in self.tags if tag.strip()))
+        self.steps = [step.strip() for step in self.steps if step.strip()]
+        if any(len(tag) > 100 for tag in self.tags) or any(len(step) > 10000 for step in self.steps):
+            raise ValueError('Recipe tags or steps are too long')
+        if self.source_url:
+            from urllib.parse import urlparse
+            if urlparse(self.source_url).scheme not in ('http', 'https'):
+                raise ValueError('Source URL must use HTTP or HTTPS')
+        return self
+
     name: str = Field(..., min_length=1, max_length=200)
     description: str = ""
     base_servings: int = Field(1, ge=1)
@@ -400,7 +422,7 @@ class MealIngredientOut(BaseModel):
     ingredient_id: str
     name: str
     ingredient_archived: bool
-    quantity: float
+    quantity: Optional[float]
     unit: str
     category_id: Optional[str]
     category_name: Optional[str] = None
@@ -410,6 +432,17 @@ class MealIngredientOut(BaseModel):
 
 
 class MealOut(BaseModel):
+    steps: list[str] = Field(default_factory=list, max_length=500)
+    tags: list[str] = Field(default_factory=list, max_length=100)
+    recipe_category: str = Field("", max_length=100)
+    prep_minutes: int = Field(0, ge=0, le=10080)
+    cook_minutes: int = Field(0, ge=0, le=10080)
+    allow_weekly_repeat: bool = False
+    to_try: bool = False
+    average_rating: Optional[float] = None
+    ratings: dict[str, int] = Field(default_factory=dict)
+    images: list[dict] = Field(default_factory=list)
+
     id: str
     name: str
     description: str
@@ -427,6 +460,7 @@ class MealOut(BaseModel):
 
 
 class BasicsItemCreate(MealIngredientInput):
+    quantity: float = Field(1.0, gt=0, allow_inf_nan=False)
     expected_version: int = Field(..., ge=1, description="Expected Basics collection version")
 
 
@@ -484,7 +518,7 @@ class LibraryPreviewRow(BaseModel):
     source_row_id: str
     ingredient_id: str
     name: str
-    quantity: float
+    quantity: Optional[float]
     unit: str
     category_id: Optional[str]
     category_name: Optional[str] = None

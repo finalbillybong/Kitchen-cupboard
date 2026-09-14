@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     LOGIN_RATE_LIMIT_MAX: int = 10
     REGISTER_RATE_LIMIT_WINDOW: int = 3600
     REGISTER_RATE_LIMIT_MAX: int = 5
+    DATA_DIR: str = "data"
+    INTEGRATION_LAN_HOSTS: str = ""
+    PUBLIC_URL: str = "http://localhost:8111"
     APP_NAME: str = "Kitchen Cupboard"
     APP_VERSION: str = "1.1.0"
 

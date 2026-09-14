@@ -11,3 +11,8 @@ aiosqlite==0.20.0
 websockets==14.1
 httpx==0.28.1
 beautifulsoup4==4.12.3
+alembic==1.20.0
+Pillow==12.3.0
+reportlab==5.0.1
+icalendar==7.3.0
+defusedxml==0.7.1

@@ -100,6 +100,9 @@ export default function ListDetailPage() {
     if (msg.user_id === user?.id) return;
 
     switch (msg.type) {
+      case 'list_updated':
+        fetchData();
+        break;
       case 'item_added':
         if (hasPendingEntity(msg.data.id)) break;
         setItems((prev) => [...prev.filter((i) => i.id !== msg.data.id), msg.data]);
@@ -130,7 +133,7 @@ export default function ListDetailPage() {
       default:
         break;
     }
-  }, [user?.id]);
+  }, [user?.id, fetchData]);
 
   useWebSocket(listId, handleWsMessage);
 
@@ -712,6 +715,7 @@ export function ItemRow({
       <div
         className={`flex-1 min-w-0${tapMode === 'row' ? ' cursor-pointer' : ''}`}
       >
+        {item.already_have && <span className="text-xs text-primary-600">Already have</span>}
         <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
           {item.name}
         </div>
@@ -734,6 +738,7 @@ export function ItemRow({
       </div>
 
       {/* Quantity badge - right side for visibility */}
+      {!item.checked && <button className="btn-ghost text-xs" aria-label={`Already have ${item.name}`} onClick={e => { e.stopPropagation(); api.updateItem(item.list_id, item.id, { already_have: true }); }}>Already have</button>}
       {(item.quantity !== 1 || item.unit) && (
         <span className={`qty-badge flex-shrink-0 ${item.checked ? 'opacity-40' : ''}`}>
           {item.quantity}{item.unit ? ` ${item.unit}` : ''}

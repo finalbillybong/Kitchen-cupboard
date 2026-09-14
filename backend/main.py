@@ -1,3 +1,5 @@
+import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 
@@ -11,7 +13,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from auth import api_key_has_scope, record_api_key_use, resolve_token
 from config import settings
 from database import engine, get_db, Base
-from models import User, ListMember, ShoppingList, BasicsCollection
+from models import User, ListMember, ShoppingList, BasicsCollection, PlannerState
 from seed import seed_categories
 from websocket_manager import manager
 from routers import (
@@ -30,13 +32,18 @@ from routers import (
 os.makedirs("data", exist_ok=True)
 
 # Create tables
-Base.metadata.create_all(bind=engine)
+from migrate import upgrade
+upgrade()
 
 # Seed default categories
 db = next(get_db())
 seed_categories(db)
 if not db.query(BasicsCollection).filter(BasicsCollection.id == "global").first():
     db.add(BasicsCollection(id="global", name="Basics"))
+    db.commit()
+if not db.get(PlannerState, "global"):
+    from routers.planner_router import DEFAULTS
+    db.add(PlannerState(id="global", settings=DEFAULTS.copy()))
     db.commit()
 db.close()
 
@@ -73,7 +80,18 @@ def _operation_id(route: APIRoute) -> str:
     return route.name
 
 
+@asynccontextmanager
+async def lifespan(app):
+    from integrations import sync_worker
+    stop = asyncio.Event()
+    task = asyncio.create_task(sync_worker(stop))
+    yield
+    stop.set()
+    await task
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     description=API_DESCRIPTION,
@@ -119,8 +137,10 @@ async def add_security_headers(request, call_next):
     else:
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-            "img-src 'self' data:; connect-src 'self' wss: ws:; font-src 'self'"
+            "img-src 'self' data: blob:; connect-src 'self' wss: ws:; font-src 'self'"
         )
+    if request.method in ('POST', 'PUT', 'DELETE') and response.status_code < 300 and not request.url.path.endswith(('/preview', '/commit')) and any(request.url.path.startswith(path) for path in ('/api/meals', '/api/ingredients', '/api/basics')):
+        await manager.broadcast_to_list('shared', {'type': 'recipes_changed'})
     return response
 
 # ─── Routers ────────────────────────────────────────────────────────
@@ -134,6 +154,13 @@ app.include_router(favourites_router)
 app.include_router(ingredients_router)
 app.include_router(meals_router)
 app.include_router(basics_router)
+from routers.planner_router import router as planner_router, pantry_router
+from routers.recipes_router import router as recipes_router
+from routers.integrations_router import router as integrations_router
+app.include_router(planner_router)
+app.include_router(pantry_router)
+app.include_router(recipes_router)
+app.include_router(integrations_router)
 
 
 # ─── Health / Context ───────────────────────────────────────────────
@@ -498,19 +525,20 @@ async def websocket_endpoint(
             await websocket.close(code=4001)
             return
 
-        lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
-        if not lst:
-            await websocket.close(code=4004)
-            return
+        if list_id != 'shared':
+            lst = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
+            if not lst:
+                await websocket.close(code=4004)
+                return
 
-        has_access = lst.owner_id == user_id or db.query(ListMember).filter(
-            ListMember.list_id == list_id,
-            ListMember.user_id == user_id,
-        ).first() is not None
+            has_access = lst.owner_id == user_id or db.query(ListMember).filter(
+                ListMember.list_id == list_id,
+                ListMember.user_id == user_id,
+            ).first() is not None
 
-        if not has_access:
-            await websocket.close(code=4003)
-            return
+            if not has_access:
+                await websocket.close(code=4003)
+                return
     finally:
         db.close()
 

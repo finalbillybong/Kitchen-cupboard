@@ -1,0 +1,54 @@
+[
+  [
+    "calendar_events",
+    "\nCREATE TABLE calendar_events (\n\tslot_id VARCHAR NOT NULL, \n\tuid VARCHAR NOT NULL, \n\thref VARCHAR NOT NULL, \n\tetag VARCHAR, \n\tPRIMARY KEY (slot_id), \n\tUNIQUE (uid)\n)\n\n",
+    []
+  ],
+  [
+    "calendar_jobs",
+    "\nCREATE TABLE calendar_jobs (\n\tslot_id VARCHAR NOT NULL, \n\trevision INTEGER NOT NULL, \n\tattempts INTEGER NOT NULL, \n\tdue_at DATETIME NOT NULL, \n\tPRIMARY KEY (slot_id)\n)\n\n",
+    []
+  ],
+  [
+    "integrations",
+    "\nCREATE TABLE integrations (\n\tid VARCHAR NOT NULL, \n\tconfig JSON NOT NULL, \n\tsecret TEXT, \n\tenabled BOOLEAN NOT NULL, \n\terror VARCHAR, \n\tpaused BOOLEAN NOT NULL, \n\tlast_success DATETIME, \n\tlast_reconcile DATETIME, \n\tPRIMARY KEY (id)\n)\n\n",
+    []
+  ],
+  [
+    "planner_state",
+    "\nCREATE TABLE planner_state (\n\tid VARCHAR NOT NULL, \n\tversion INTEGER NOT NULL, \n\tsettings JSON NOT NULL, \n\tPRIMARY KEY (id)\n)\n\n",
+    []
+  ],
+  [
+    "review_receipts",
+    "\nCREATE TABLE review_receipts (\n\tid VARCHAR NOT NULL, \n\tuser_id VARCHAR NOT NULL, \n\trequest_id VARCHAR(100), \n\ttoken VARCHAR NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tpayload JSON NOT NULL, \n\tfingerprint VARCHAR NOT NULL, \n\tresult JSON, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_review_request UNIQUE (user_id, request_id), \n\tFOREIGN KEY(user_id) REFERENCES users (id), \n\tUNIQUE (token)\n)\n\n",
+    []
+  ],
+  [
+    "grocery_contributions",
+    "\nCREATE TABLE grocery_contributions (\n\tid VARCHAR NOT NULL, \n\tlist_id VARCHAR NOT NULL, \n\tweek VARCHAR(10) NOT NULL, \n\t\"key\" VARCHAR NOT NULL, \n\trequirement JSON NOT NULL, \n\tprogress JSON NOT NULL, \n\titem_id VARCHAR, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_grocery_requirement UNIQUE (list_id, week, \"key\"), \n\tFOREIGN KEY(list_id) REFERENCES shopping_lists (id)\n)\n\n",
+    []
+  ],
+  [
+    "planner_slots",
+    "\nCREATE TABLE planner_slots (\n\tid VARCHAR NOT NULL, \n\tday VARCHAR(10) NOT NULL, \n\tmeal_type VARCHAR NOT NULL, \n\tkind VARCHAR NOT NULL, \n\tmeal_id VARCHAR, \n\tcooking_slot_id VARCHAR, \n\tservings INTEGER NOT NULL, \n\tnotes TEXT NOT NULL, \n\ttime VARCHAR(5) NOT NULL, \n\tduration INTEGER NOT NULL, \n\tpinned BOOLEAN NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_planner_position UNIQUE (day, meal_type), \n\tFOREIGN KEY(meal_id) REFERENCES meals (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_planner_slots_day ON planner_slots (day)"
+    ]
+  ],
+  [
+    "recipe_images",
+    "\nCREATE TABLE recipe_images (\n\tid VARCHAR NOT NULL, \n\tmeal_id VARCHAR, \n\tuploaded_by VARCHAR NOT NULL, \n\tpath VARCHAR NOT NULL, \n\trole VARCHAR NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tcreated_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(meal_id) REFERENCES meals (id), \n\tFOREIGN KEY(uploaded_by) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "recipe_ratings",
+    "\nCREATE TABLE recipe_ratings (\n\tmeal_id VARCHAR NOT NULL, \n\tuser_id VARCHAR NOT NULL, \n\tvalue INTEGER NOT NULL, \n\tPRIMARY KEY (meal_id, user_id), \n\tFOREIGN KEY(meal_id) REFERENCES meals (id), \n\tFOREIGN KEY(user_id) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "pantry_staples",
+    "\nCREATE TABLE pantry_staples (\n\tingredient_id VARCHAR NOT NULL, \n\tPRIMARY KEY (ingredient_id), \n\tFOREIGN KEY(ingredient_id) REFERENCES ingredients (id)\n)\n\n",
+    []
+  ]
+]
