@@ -31,6 +31,7 @@ def _item_to_out(item: ListItem) -> ItemOut:
         category_color=cat.color if cat else None,
         category_icon=cat.icon if cat else None,
         checked=item.checked,
+        already_have=item.already_have,
         checked_by=item.checked_by,
         checked_at=item.checked_at,
         added_by=item.added_by,
@@ -213,7 +214,13 @@ async def update_item(
         item.category_id = data.category_id
         if data.category_id:
             _update_category_memory(item.name, data.category_id, db)
+    if data.already_have is not None:
+        item.already_have = data.already_have
+        item.checked = data.already_have
+        item.checked_by = None
+        item.checked_at = None
     if data.checked is not None:
+        item.already_have = False
         item.checked = data.checked
         if data.checked:
             item.checked_by = user.id
@@ -251,6 +258,8 @@ async def delete_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item not found")
 
+    from routers.planner_router import retain_completed
+    retain_completed(db, [item])
     db.delete(item)
     _touch_list(list_id, db)
     db.commit()
@@ -271,6 +280,8 @@ async def clear_checked_items(
     )
     if data is not None:
         query = query.filter(ListItem.id.in_(data.item_ids))
+    from routers.planner_router import retain_completed
+    retain_completed(db, query.all())
     deleted = query.delete(synchronize_session=False)
     db.commit()
 

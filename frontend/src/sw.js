@@ -7,8 +7,17 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 self.skipWaiting();
+self.addEventListener('activate', event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('kc-api-read-') && key !== 'kc-api-read-v3').map(key => caches.delete(key)))));
+});
 
 const userCacheKeyPlugin = {
+  async cachedResponseWillBeUsed({ cachedResponse }) {
+    if (!cachedResponse) return null;
+    const headers = new Headers(cachedResponse.headers);
+    headers.set('X-KC-Offline', '1');
+    return new Response(cachedResponse.body, {status: cachedResponse.status, headers});
+  },
   async cacheKeyWillBeUsed({ request }) {
     const authorization = request.headers.get('Authorization') || '';
     let identity = 'anonymous';
@@ -32,9 +41,10 @@ const userCacheKeyPlugin = {
 
 registerRoute(
   ({ url, request }) => url.origin === self.location.origin
-    && url.pathname.startsWith('/api/') && request.method === 'GET',
+    && (/^\/api\/(lists|categories|ingredients|meals|basics|planner|pantry)(\/|$)/.test(url.pathname) || url.pathname.startsWith('/api/recipes/images/'))
+    && !url.pathname.includes('/export') && request.method === 'GET',
   new NetworkFirst({
-    cacheName: 'kc-api-read-v2',
+    cacheName: 'kc-api-read-v3',
     networkTimeoutSeconds: 4,
     plugins: [
       userCacheKeyPlugin,

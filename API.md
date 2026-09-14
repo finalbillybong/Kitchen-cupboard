@@ -334,3 +334,57 @@ Error bodies use FastAPI's `detail` field:
 ```
 
 Validation failures use an array in the same `detail` field. Refer to `/api/openapi.json` for exact request and response schemas.
+
+
+## Recipes, planner and optional integrations
+
+Existing `/api/meals` resources now include ordered `steps`, `tags`, `recipe_category`,
+`prep_minutes`, `cook_minutes`, `allow_weekly_repeat`, `to_try`, ratings and images.
+Ingredient `quantity: null` means unquantified; never substitute a numeric quantity.
+List/search accepts `q`, `tag`, `category`, `max_minutes`, `to_try` and `sort=rating`.
+
+| Operation | Endpoint |
+|---|---|
+| Full editable URL draft | `POST /api/recipes/import/url` (`url`) |
+| Ordered photo draft | `POST /api/recipes/import/photos` (multipart `files`, 1–5) |
+| Photo availability | `GET /api/recipes/import/status` |
+| Upload cover | `POST /api/recipes/images` (multipart `file`) |
+| Authenticated image | `GET /api/recipes/images/{id}` |
+| Set own rating | `PUT /api/recipes/{meal_id}/rating` (`value`, 1–5) |
+| Shared To try | `PUT /api/recipes/{meal_id}/collection` (`to_try`) |
+| Recipe download | `GET /api/recipes/{meal_id}/export?format=text|pdf&servings=4` |
+| Active library export | `GET /api/recipes/export?format=csv|pdf` |
+| Shared week | `GET /api/planner?week=YYYY-MM-DD` |
+| Review slot changes | `POST /api/planner/preview` (`expected_version`, `slots`, `remove_ids`) |
+| Apply reviewed slots | `POST /api/planner/commit` (`token`, `request_id`) |
+| Suggestions review | `POST /api/planner/suggestions` (`week`, `expected_version`, `vegetarian`, `fish`, `avoid_weeks`) |
+| Grocery review | `POST /api/planner/shopping/preview` (`week`, `list_id`, `include_staples`) |
+| Apply grocery review | `POST /api/planner/shopping/commit` (`token`, `request_id`) |
+| Pantry staples | `GET /api/pantry` |
+| Set staple | `PUT /api/pantry/{ingredient_id}` (`expected_version`, `usually_have`) |
+| Admin planner defaults | `PUT /api/planner/settings` |
+| Admin integration status/config | `GET /api/integrations`, `PUT /api/integrations/{vision|nextcloud}` |
+| Admin calendar setup/recovery | `POST /api/integrations/nextcloud/{discover|calendar|retry|disconnect}` |
+
+Reviews are bound to the authenticated user. Generate a fresh UUID `request_id` for
+each commit and reuse it when retrying that commit. A 409 means reload and review
+again. Shopping reviews/commits require destination-list edit permission and never
+grant list access to other planner users. Ordinary reads/writes retain API-key
+read/write scopes; integration administration and planner defaults require an
+administrator's interactive JWT login.
+
+Slot changes supply `id`, ISO `day`, `meal_type`, `kind` (`recipe`, `leftover`, `skip`),
+`meal_id` or `cooking_slot_id`, `servings`, `notes`, `time`, `duration`, and `pinned`.
+Replacing positions in one preview supports moves/swaps. When removing a cooking
+slot, include removal or reassignment of all linked leftovers in the same review.
+The week response includes `linked_slots` for reviewing batches across week boundaries.
+
+Full imports return editable drafts and do not create meals. Save reviewed drafts
+with `POST /api/meals`; include returned `image_ids` to attach retained originals.
+Existing ingredient-only import operations remain available. Binary downloads use
+Bearer authentication and `Content-Disposition`; no public recipe or image links
+are introduced. Shared invalidations use authenticated `/ws/shared`; destination
+shopping updates stay on the existing list-specific WebSocket.
+
+See [release setup and validation](docs/recipes-planner-release.md) for limits,
+worker/reconciliation behaviour and migration/rollout requirements.

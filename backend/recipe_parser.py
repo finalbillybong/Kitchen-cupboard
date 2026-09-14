@@ -20,7 +20,8 @@ from bs4 import BeautifulSoup
 @dataclass
 class ParsedIngredient:
     name: str
-    quantity: float
+    quantity: Optional[float]
+    notes: str
     unit: str
 
 
@@ -106,7 +107,7 @@ def parse_ingredient(text: str) -> ParsedIngredient:
     # Strip size/descriptor prefixes
     text = _SKIP_PREFIXES.sub("", text).strip()
 
-    quantity = 1.0
+    quantity = None
     unit = ""
     name = text
 
@@ -162,7 +163,7 @@ def parse_ingredient(text: str) -> ParsedIngredient:
     else:
         name = original[0].upper() + original[1:] if original else "Unknown ingredient"
 
-    return ParsedIngredient(name=name, quantity=round(quantity, 3), unit=unit)
+    return ParsedIngredient(name=name, quantity=round(quantity, 3) if quantity is not None else None, unit=unit, notes=original)
 
 
 def _validate_url(url: str):
@@ -206,15 +207,24 @@ async def fetch_recipe(url: str) -> dict:
     _validate_url(url)
 
     async with httpx.AsyncClient(
-        follow_redirects=True,
+        follow_redirects=False,
         timeout=15.0,
         headers={
             "User-Agent": "Mozilla/5.0 (compatible; KitchenCupboard/1.0; recipe-importer)",
             "Accept": "text/html",
         },
     ) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
+        for _ in range(6):
+            _validate_url(url)
+            resp = await client.get(url)
+            if resp.is_redirect:
+                from urllib.parse import urljoin
+                url = urljoin(url, resp.headers['location'])
+                continue
+            resp.raise_for_status()
+            break
+        else:
+            raise ValueError('Too many recipe redirects')
 
     soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -248,10 +258,18 @@ async def fetch_recipe(url: str) -> dict:
     source = urlparse(url).netloc.removeprefix("www.")
 
     return {
+        "name": title,
+        "description": BeautifulSoup(str(recipe_data.get('description', '')), 'html.parser').get_text(),
+        "steps": extract_steps(recipe_data.get('recipeInstructions', [])),
+        "prep_minutes": duration_minutes(recipe_data.get('prepTime', '')),
+        "cook_minutes": duration_minutes(recipe_data.get('cookTime', '')),
+        "base_servings": extract_servings(recipe_data.get('recipeYield', 1)),
+        "source_url": url,
+        "recipe_category": str(recipe_data.get('recipeCategory', ''))[:100],
         "title": title,
         "source": source,
         "ingredients": [
-            {"name": i.name, "quantity": i.quantity, "unit": i.unit}
+            {"name": i.name, "quantity": i.quantity, "unit": i.unit, "notes": i.notes}
             for i in ingredients
         ],
     }
@@ -274,3 +292,23 @@ def _find_recipe(data) -> Optional[dict]:
             if result:
                 return result
     return None
+
+
+def extract_steps(value):
+    if isinstance(value, str):
+        return [BeautifulSoup(value, 'html.parser').get_text()] if value.strip() else []
+    if isinstance(value, list):
+        return [step for item in value for step in extract_steps(item)]
+    if isinstance(value, dict):
+        return extract_steps(value.get('itemListElement', value.get('text', '')))
+    return []
+
+
+def duration_minutes(value):
+    match = re.fullmatch(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', str(value))
+    return int(match[1] or 0) * 60 + int(match[2] or 0) if match else 0
+
+
+def extract_servings(value):
+    match = re.search(r'\d+', str(value))
+    return max(1, int(match[0])) if match else 1

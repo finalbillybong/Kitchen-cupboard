@@ -124,6 +124,8 @@ export async function projectPendingItems(listId, canonicalItems, categories = [
       items = items.map((item) => item.id === itemMatch[1] ? {
         ...item,
         ...body,
+        ...(Object.hasOwn(body, 'already_have') ? { checked: body.already_have } : {}),
+        ...(Object.hasOwn(body, 'checked') ? { already_have: false } : {}),
         ...(Object.hasOwn(body, 'category_id') ? {
           category_name: category?.name || null,
           category_color: category?.color || null,

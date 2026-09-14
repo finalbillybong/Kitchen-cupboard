@@ -5,6 +5,7 @@ export default defineConfig({
   timeout: 60000,
   expect: { timeout: 10000 },
   fullyParallel: false,
+  workers: 1,
   use: {
     baseURL: 'http://127.0.0.1:8111',
     trace: 'retain-on-failure',
@@ -16,7 +17,9 @@ export default defineConfig({
     env: {
       ...process.env,
       SECRET_KEY: 'playwright-only-secure-secret-key-that-is-long-and-random-123456789',
-      DATABASE_URL: 'sqlite:////tmp/kitchen-cupboard-playwright.db',
+      DATABASE_URL: process.env.KC_E2E_DATABASE_URL || 'sqlite:////tmp/kitchen-cupboard-playwright.db',
+      DATA_DIR: process.env.KC_E2E_DATA_DIR || 'data',
+      REGISTER_RATE_LIMIT_MAX: '100',
       REGISTRATION_ENABLED: 'true',
     },
   },

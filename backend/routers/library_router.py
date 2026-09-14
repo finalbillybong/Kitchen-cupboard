@@ -3,7 +3,7 @@
 import hashlib
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -21,6 +21,7 @@ from models import (
     ListItem,
     Meal,
     MealIngredient,
+    RecipeImage,
     ShoppingList,
     User,
     utcnow,
@@ -50,6 +51,23 @@ from schemas import (
     RecipeMealCreateRequest,
 )
 from websocket_manager import manager
+from units import scaled
+RECIPE_FIELDS = ('steps', 'tags', 'recipe_category', 'prep_minutes', 'cook_minutes', 'allow_weekly_repeat')
+
+
+def attach_images(meal, image_ids, user, db):
+    if len(set(image_ids)) != len(image_ids):
+        raise HTTPException(422, 'Duplicate images')
+    for existing in db.query(RecipeImage).filter_by(meal_id=meal.id):
+        if existing.id not in image_ids:
+            existing.meal_id = None
+    for index, image_id in enumerate(image_ids):
+        image = db.get(RecipeImage, image_id)
+        if not image or (image.meal_id != meal.id and (image.meal_id or image.uploaded_by != user.id)):
+            raise HTTPException(422, 'Image is unavailable')
+        image.meal_id = meal.id
+        image.sort_order = index
+
 
 
 ingredients_router = APIRouter(prefix="/api/ingredients", tags=["Ingredients"])
@@ -149,6 +167,10 @@ def meal_row_out(row: MealIngredient) -> MealIngredientOut:
 
 def meal_out(meal: Meal) -> MealOut:
     return MealOut(
+        **{key: getattr(meal, key) for key in ('steps', 'tags', 'recipe_category', 'prep_minutes', 'cook_minutes', 'allow_weekly_repeat', 'to_try')},
+        average_rating=sum(r.value for r in meal.ratings) / len(meal.ratings) if meal.ratings else None,
+        ratings={r.user_id: r.value for r in meal.ratings},
+        images=[{'id': i.id, 'role': i.role, 'sort_order': i.sort_order} for i in meal.images],
         id=meal.id,
         name=meal.name,
         description=meal.description,
@@ -477,6 +499,11 @@ def replace_meal_rows(
 @meals_router.get("", response_model=list[MealOut], summary="List global meals")
 def list_meals(
     q: str = "",
+    tag: str = "",
+    category: str = "",
+    max_minutes: int | None = None,
+    to_try: bool = False,
+    sort: str = "name",
     include_archived: bool = False,
     user: User = Depends(get_current_user_read),
     db: Session = Depends(get_db),
@@ -492,8 +519,17 @@ def list_meals(
         query = query.filter(Meal.is_archived == False)
     if q.strip():
         escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        query = query.filter(Meal.name.ilike(f"%{escaped}%", escape="\\"))
-    return [meal_out(meal) for meal in query.order_by(Meal.name, Meal.created_at).all()]
+        query = query.filter((Meal.name.ilike(f"%{escaped}%", escape="\\")) | Meal.description.ilike(f"%{escaped}%", escape="\\") | Meal.ingredients.any(MealIngredient.ingredient.has(Ingredient.name.ilike(f"%{escaped}%", escape="\\"))))
+    if category:
+        query = query.filter(Meal.recipe_category == category)
+    if max_minutes is not None:
+        query = query.filter(Meal.prep_minutes + Meal.cook_minutes <= max_minutes)
+    if to_try:
+        query = query.filter(Meal.to_try == True)
+    result = [meal_out(meal) for meal in query.order_by(Meal.name, Meal.created_at).all() if not tag or tag.casefold() in [t.casefold() for t in meal.tags]]
+    if sort == 'rating':
+        result.sort(key=lambda meal: meal.average_rating or 0, reverse=True)
+    return result
 
 
 @meals_router.post("", response_model=MealOut, status_code=201, summary="Create a global meal")
@@ -503,6 +539,7 @@ def create_meal(
     db: Session = Depends(get_db),
 ):
     meal = Meal(
+        **{key: getattr(data, key) for key in RECIPE_FIELDS},
         name=data.name.strip(),
         description=data.description,
         base_servings=data.base_servings,
@@ -514,6 +551,7 @@ def create_meal(
     try:
         db.flush()
         replace_meal_rows(meal, data.ingredients, user, db)
+        attach_images(meal, data.image_ids, user, db)
         audit(db, user, "meal.create", {"meal_id": meal.id, "name": meal.name})
         db.commit()
     except HTTPException:
@@ -586,7 +624,17 @@ def update_meal(
         raise HTTPException(status_code=409, detail="Archived meals cannot be edited")
     if meal.version != data.expected_version:
         raise version_conflict("Meal", meal.version)
+    changed = db.execute(update(Meal).where(Meal.id == meal_id, Meal.version == data.expected_version)
+                         .values(version=data.expected_version + 1).execution_options(synchronize_session=False))
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(409, 'Recipe changed. Reload and review again.')
     allowed_archived = {row.ingredient_id for row in meal.ingredients}
+    for key in RECIPE_FIELDS:
+        if key in data.model_fields_set:
+            setattr(meal, key, getattr(data, key))
+    if "image_ids" in data.model_fields_set:
+        attach_images(meal, data.image_ids, user, db)
     meal.name = data.name.strip()
     meal.description = data.description
     meal.base_servings = data.base_servings
@@ -596,6 +644,10 @@ def update_meal(
     meal.version += 1
     try:
         replace_meal_rows(meal, data.ingredients, user, db, allowed_archived)
+        from routers.planner_router import queue_sync
+        from models import PlannerSlot
+        cooking_ids = [s.id for s in db.query(PlannerSlot).filter_by(meal_id=meal.id)]
+        queue_sync(db, cooking_ids + [s.id for s in db.query(PlannerSlot).filter(PlannerSlot.cooking_slot_id.in_(cooking_ids))])
         audit(db, user, "meal.update", {"meal_id": meal.id, "version": meal.version})
         db.commit()
     except HTTPException:
@@ -860,7 +912,7 @@ def preview_rows(
     matches = existing_matches(list_id, db)
     output = []
     for row in rows:
-        quantity = round(row.quantity * factor, 3) if row.scales_with_servings else row.quantity
+        quantity = scaled(row.quantity, factor, row.scales_with_servings)
         match = matches.get((normalize_name(row.ingredient.name), normalize_unit(row.unit)))
         category_id = row.category_id or row.ingredient.default_category_id or remembered_category(
             row.ingredient.name, db
@@ -1004,11 +1056,12 @@ async def commit_rows(
     try:
         for row_id in selected_ids:
             row = row_map[row_id]
-            quantity = round(row.quantity * factor, 3) if row.scales_with_servings else row.quantity
+            quantity = scaled(row.quantity, factor, row.scales_with_servings)
             key = (normalize_name(row.ingredient.name), normalize_unit(row.unit))
             existing = matches.get(key)
             if existing:
-                existing.quantity = round(existing.quantity + quantity, 3)
+                existing.quantity = round(existing.quantity + quantity, 3) if existing.quantity is not None and quantity is not None else None
+                existing.already_have = False
                 existing.checked = False
                 existing.checked_by = None
                 existing.checked_at = None

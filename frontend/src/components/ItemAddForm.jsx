@@ -50,7 +50,6 @@ export default function ItemAddForm({ listId, categories, onItemAdded, onItemAdd
         created_at: new Date().toISOString(),
         _pending: true,
       });
-      await api.createItem(listId, payload);
       setName('');
       setQty('1');
       setUnit('');
@@ -58,6 +57,7 @@ export default function ItemAddForm({ listId, categories, onItemAdded, onItemAdd
       setSuggestions([]);
       setShowAdvanced(false);
       inputRef.current?.focus();
+      await api.createItem(listId, payload);
     } catch (e) {
       onItemAddFailed?.(optimisticId);
       alert(e.message);

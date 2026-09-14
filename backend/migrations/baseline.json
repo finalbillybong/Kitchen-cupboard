@@ -1,0 +1,101 @@
+[
+  [
+    "users",
+    "\nCREATE TABLE users (\n\tid VARCHAR NOT NULL, \n\tusername VARCHAR(50) NOT NULL, \n\temail VARCHAR(255) NOT NULL, \n\tpassword_hash VARCHAR(255) NOT NULL, \n\tdisplay_name VARCHAR(100), \n\tis_admin BOOLEAN, \n\tis_active BOOLEAN, \n\tcreated_at DATETIME, \n\tPRIMARY KEY (id)\n)\n\n",
+    [
+      "CREATE UNIQUE INDEX ix_users_email ON users (email)",
+      "CREATE UNIQUE INDEX ix_users_username ON users (username)"
+    ]
+  ],
+  [
+    "api_keys",
+    "\nCREATE TABLE api_keys (\n\tid VARCHAR NOT NULL, \n\tuser_id VARCHAR NOT NULL, \n\tkey_hash VARCHAR(255) NOT NULL, \n\tkey_prefix VARCHAR(11) NOT NULL, \n\tname VARCHAR(100) NOT NULL, \n\tscopes TEXT, \n\tis_active BOOLEAN, \n\tlast_used DATETIME, \n\tcreated_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(user_id) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "audit_log",
+    "\nCREATE TABLE audit_log (\n\tid VARCHAR NOT NULL, \n\tuser_id VARCHAR, \n\taction VARCHAR(100) NOT NULL, \n\tdetail TEXT, \n\tip_address VARCHAR(45), \n\tcreated_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(user_id) REFERENCES users (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_audit_log_action ON audit_log (action)",
+      "CREATE INDEX ix_audit_log_created_at ON audit_log (created_at)"
+    ]
+  ],
+  [
+    "basics_collections",
+    "\nCREATE TABLE basics_collections (\n\tid VARCHAR NOT NULL, \n\tname VARCHAR(100) NOT NULL, \n\tversion INTEGER NOT NULL, \n\tupdated_by VARCHAR, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(updated_by) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "categories",
+    "\nCREATE TABLE categories (\n\tid VARCHAR NOT NULL, \n\tname VARCHAR(100) NOT NULL, \n\ticon VARCHAR(50), \n\tcolor VARCHAR(7), \n\tsort_order INTEGER, \n\tis_default BOOLEAN, \n\tcreated_by VARCHAR, \n\tcreated_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(created_by) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "invite_codes",
+    "\nCREATE TABLE invite_codes (\n\tid VARCHAR NOT NULL, \n\tcode VARCHAR(20) NOT NULL, \n\tcreated_by VARCHAR NOT NULL, \n\tused_by VARCHAR, \n\tis_used BOOLEAN, \n\tcreated_at DATETIME, \n\texpires_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(created_by) REFERENCES users (id), \n\tFOREIGN KEY(used_by) REFERENCES users (id)\n)\n\n",
+    [
+      "CREATE UNIQUE INDEX ix_invite_codes_code ON invite_codes (code)"
+    ]
+  ],
+  [
+    "meals",
+    "\nCREATE TABLE meals (\n\tid VARCHAR NOT NULL, \n\tname VARCHAR(200) NOT NULL, \n\tdescription TEXT NOT NULL, \n\tbase_servings INTEGER NOT NULL, \n\tsource_url VARCHAR(2000), \n\tversion INTEGER NOT NULL, \n\tis_archived BOOLEAN NOT NULL, \n\tcreated_by VARCHAR NOT NULL, \n\tupdated_by VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(created_by) REFERENCES users (id), \n\tFOREIGN KEY(updated_by) REFERENCES users (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_meals_name ON meals (name)",
+      "CREATE INDEX ix_meals_is_archived ON meals (is_archived)"
+    ]
+  ],
+  [
+    "shopping_lists",
+    "\nCREATE TABLE shopping_lists (\n\tid VARCHAR NOT NULL, \n\tname VARCHAR(200) NOT NULL, \n\tdescription TEXT, \n\towner_id VARCHAR NOT NULL, \n\tcolor VARCHAR(7), \n\ticon VARCHAR(50), \n\tis_archived BOOLEAN, \n\tcreated_at DATETIME, \n\tupdated_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(owner_id) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "bulk_add_receipts",
+    "\nCREATE TABLE bulk_add_receipts (\n\tid VARCHAR NOT NULL, \n\tuser_id VARCHAR NOT NULL, \n\trequest_id VARCHAR(100) NOT NULL, \n\tsource_type VARCHAR(20) NOT NULL, \n\tsource_id VARCHAR NOT NULL, \n\tlist_id VARCHAR NOT NULL, \n\trequest_hash VARCHAR(64) NOT NULL, \n\tresult_json TEXT NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_bulk_add_user_request UNIQUE (user_id, request_id), \n\tFOREIGN KEY(user_id) REFERENCES users (id), \n\tFOREIGN KEY(list_id) REFERENCES shopping_lists (id)\n)\n\n",
+    []
+  ],
+  [
+    "ingredients",
+    "\nCREATE TABLE ingredients (\n\tid VARCHAR NOT NULL, \n\tname VARCHAR(200) NOT NULL, \n\tnormalized_name VARCHAR(200) NOT NULL, \n\tdefault_unit VARCHAR(30) NOT NULL, \n\tdefault_category_id VARCHAR, \n\tversion INTEGER NOT NULL, \n\tis_archived BOOLEAN NOT NULL, \n\tcreated_by VARCHAR NOT NULL, \n\tupdated_by VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(default_category_id) REFERENCES categories (id), \n\tFOREIGN KEY(created_by) REFERENCES users (id), \n\tFOREIGN KEY(updated_by) REFERENCES users (id)\n)\n\n",
+    [
+      "CREATE UNIQUE INDEX ix_ingredients_normalized_name ON ingredients (normalized_name)",
+      "CREATE INDEX ix_ingredients_is_archived ON ingredients (is_archived)"
+    ]
+  ],
+  [
+    "item_category_memory",
+    "\nCREATE TABLE item_category_memory (\n\tid VARCHAR NOT NULL, \n\titem_name_lower VARCHAR(200) NOT NULL, \n\tcategory_id VARCHAR NOT NULL, \n\tusage_count INTEGER, \n\tlast_used DATETIME, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_item_category UNIQUE (item_name_lower, category_id), \n\tFOREIGN KEY(category_id) REFERENCES categories (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_item_category_memory_item_name_lower ON item_category_memory (item_name_lower)",
+      "CREATE INDEX ix_item_memory_lookup ON item_category_memory (item_name_lower, usage_count)"
+    ]
+  ],
+  [
+    "list_items",
+    "\nCREATE TABLE list_items (\n\tid VARCHAR NOT NULL, \n\tlist_id VARCHAR NOT NULL, \n\tname VARCHAR(200) NOT NULL, \n\tquantity FLOAT, \n\tunit VARCHAR(30), \n\tcategory_id VARCHAR, \n\tchecked BOOLEAN, \n\tchecked_by VARCHAR, \n\tchecked_at DATETIME, \n\tadded_by VARCHAR NOT NULL, \n\tnotes TEXT, \n\tsort_order INTEGER, \n\tcreated_at DATETIME, \n\tupdated_at DATETIME, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(list_id) REFERENCES shopping_lists (id) ON DELETE CASCADE, \n\tFOREIGN KEY(category_id) REFERENCES categories (id), \n\tFOREIGN KEY(checked_by) REFERENCES users (id), \n\tFOREIGN KEY(added_by) REFERENCES users (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_list_items_list_sort ON list_items (list_id, checked, sort_order)"
+    ]
+  ],
+  [
+    "list_members",
+    "\nCREATE TABLE list_members (\n\tid VARCHAR NOT NULL, \n\tlist_id VARCHAR NOT NULL, \n\tuser_id VARCHAR NOT NULL, \n\trole VARCHAR(20), \n\tjoined_at DATETIME, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_list_member UNIQUE (list_id, user_id), \n\tFOREIGN KEY(list_id) REFERENCES shopping_lists (id) ON DELETE CASCADE, \n\tFOREIGN KEY(user_id) REFERENCES users (id)\n)\n\n",
+    []
+  ],
+  [
+    "basics_items",
+    "\nCREATE TABLE basics_items (\n\tid VARCHAR NOT NULL, \n\tcollection_id VARCHAR NOT NULL, \n\tingredient_id VARCHAR NOT NULL, \n\tquantity FLOAT NOT NULL, \n\tunit VARCHAR(30) NOT NULL, \n\tcategory_id VARCHAR, \n\tnotes TEXT NOT NULL, \n\tscales_with_servings BOOLEAN NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tversion INTEGER NOT NULL, \n\tis_archived BOOLEAN NOT NULL, \n\tcreated_by VARCHAR NOT NULL, \n\tupdated_by VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tupdated_at DATETIME NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_basics_ingredient UNIQUE (collection_id, ingredient_id), \n\tFOREIGN KEY(collection_id) REFERENCES basics_collections (id) ON DELETE CASCADE, \n\tFOREIGN KEY(ingredient_id) REFERENCES ingredients (id), \n\tFOREIGN KEY(category_id) REFERENCES categories (id), \n\tFOREIGN KEY(created_by) REFERENCES users (id), \n\tFOREIGN KEY(updated_by) REFERENCES users (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_basics_items_is_archived ON basics_items (is_archived)",
+      "CREATE INDEX ix_basics_items_order ON basics_items (collection_id, sort_order)"
+    ]
+  ],
+  [
+    "meal_ingredients",
+    "\nCREATE TABLE meal_ingredients (\n\tid VARCHAR NOT NULL, \n\tmeal_id VARCHAR NOT NULL, \n\tingredient_id VARCHAR NOT NULL, \n\tquantity FLOAT NOT NULL, \n\tunit VARCHAR(30) NOT NULL, \n\tcategory_id VARCHAR, \n\tnotes TEXT NOT NULL, \n\tscales_with_servings BOOLEAN NOT NULL, \n\tsort_order INTEGER NOT NULL, \n\tPRIMARY KEY (id), \n\tCONSTRAINT uq_meal_ingredient UNIQUE (meal_id, ingredient_id), \n\tFOREIGN KEY(meal_id) REFERENCES meals (id) ON DELETE CASCADE, \n\tFOREIGN KEY(ingredient_id) REFERENCES ingredients (id), \n\tFOREIGN KEY(category_id) REFERENCES categories (id)\n)\n\n",
+    [
+      "CREATE INDEX ix_meal_ingredients_order ON meal_ingredients (meal_id, sort_order)"
+    ]
+  ]
+]

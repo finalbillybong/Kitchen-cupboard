@@ -50,5 +50,8 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.version.outputs.tags }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           no-cache: true
           platforms: linux/amd64

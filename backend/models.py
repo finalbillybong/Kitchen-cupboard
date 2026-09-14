@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column,
+    JSON,
     String,
     Boolean,
     Integer,
@@ -99,9 +100,10 @@ class ListItem(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     list_id = Column(String, ForeignKey("shopping_lists.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(200), nullable=False)
-    quantity = Column(Float, default=1.0)
+    quantity = Column(Float().evaluates_none(), default=1.0)
     unit = Column(String(30), default="")
     category_id = Column(String, ForeignKey("categories.id"), nullable=True)
+    already_have = Column(Boolean, default=False, nullable=False)
     checked = Column(Boolean, default=False)
     checked_by = Column(String, ForeignKey("users.id"), nullable=True)
     checked_at = Column(DateTime, nullable=True)
@@ -213,6 +215,13 @@ class Meal(Base):
     name = Column(String(200), nullable=False, index=True)
     description = Column(Text, default="", nullable=False)
     base_servings = Column(Integer, default=1, nullable=False)
+    steps = Column(JSON, default=list, nullable=False)
+    tags = Column(JSON, default=list, nullable=False)
+    recipe_category = Column(String(100), default="", nullable=False)
+    prep_minutes = Column(Integer, default=0, nullable=False)
+    cook_minutes = Column(Integer, default=0, nullable=False)
+    allow_weekly_repeat = Column(Boolean, default=False, nullable=False)
+    to_try = Column(Boolean, default=False, nullable=False)
     source_url = Column(String(2000), nullable=True)
     version = Column(Integer, default=1, nullable=False)
     is_archived = Column(Boolean, default=False, nullable=False, index=True)
@@ -223,6 +232,8 @@ class Meal(Base):
 
     creator = relationship("User", foreign_keys=[created_by])
     updater = relationship("User", foreign_keys=[updated_by])
+    ratings = relationship("RecipeRating", cascade="all, delete-orphan")
+    images = relationship("RecipeImage", order_by="RecipeImage.sort_order")
     ingredients = relationship(
         "MealIngredient",
         back_populates="meal",
@@ -237,7 +248,7 @@ class MealIngredient(Base):
     id = Column(String, primary_key=True, default=generate_uuid)
     meal_id = Column(String, ForeignKey("meals.id", ondelete="CASCADE"), nullable=False)
     ingredient_id = Column(String, ForeignKey("ingredients.id"), nullable=False)
-    quantity = Column(Float, default=1.0, nullable=False)
+    quantity = Column(Float, nullable=True)
     unit = Column(String(30), default="", nullable=False)
     category_id = Column(String, ForeignKey("categories.id"), nullable=True)
     notes = Column(Text, default="", nullable=False)
@@ -326,3 +337,102 @@ class BulkAddReceipt(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "request_id", name="uq_bulk_add_user_request"),
     )
+
+
+class RecipeRating(Base):
+    __tablename__ = "recipe_ratings"
+    meal_id = Column(String, ForeignKey("meals.id"), primary_key=True)
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    value = Column(Integer, nullable=False)
+
+
+class RecipeImage(Base):
+    __tablename__ = "recipe_images"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    meal_id = Column(String, ForeignKey("meals.id"), nullable=True)
+    uploaded_by = Column(String, ForeignKey("users.id"), nullable=False)
+    path = Column(String, nullable=False)
+    role = Column(String, default="reference", nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+
+class PantryStaple(Base):
+    __tablename__ = "pantry_staples"
+    ingredient_id = Column(String, ForeignKey("ingredients.id"), primary_key=True)
+
+
+class PlannerState(Base):
+    __tablename__ = "planner_state"
+    id = Column(String, primary_key=True, default="global")
+    version = Column(Integer, default=1, nullable=False)
+    settings = Column(JSON, default=dict, nullable=False)
+
+
+class PlannerSlot(Base):
+    __tablename__ = "planner_slots"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    day = Column(String(10), nullable=False, index=True)
+    meal_type = Column(String, nullable=False)
+    kind = Column(String, nullable=False)
+    meal_id = Column(String, ForeignKey("meals.id"), nullable=True)
+    cooking_slot_id = Column(String, nullable=True)
+    servings = Column(Integer, default=1, nullable=False)
+    notes = Column(Text, default="", nullable=False)
+    time = Column(String(5), nullable=False)
+    duration = Column(Integer, default=60, nullable=False)
+    pinned = Column(Boolean, default=False, nullable=False)
+    __table_args__ = (UniqueConstraint("day", "meal_type", name="uq_planner_position"),)
+
+
+class GroceryContribution(Base):
+    __tablename__ = "grocery_contributions"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    list_id = Column(String, ForeignKey("shopping_lists.id"), nullable=False)
+    week = Column(String(10), nullable=False)
+    key = Column(String, nullable=False)
+    requirement = Column(JSON, nullable=False)
+    progress = Column(JSON, default=dict, nullable=False)
+    item_id = Column(String, nullable=True)
+    __table_args__ = (UniqueConstraint("list_id", "week", "key", name="uq_grocery_requirement"),)
+
+
+class ReviewReceipt(Base):
+    __tablename__ = "review_receipts"
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    request_id = Column(String(100), nullable=True)
+    token = Column(String, unique=True, nullable=False)
+    kind = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    fingerprint = Column(String, nullable=False)
+    result = Column(JSON, nullable=True)
+    __table_args__ = (UniqueConstraint("user_id", "request_id", name="uq_review_request"),)
+
+
+class Integration(Base):
+    __tablename__ = "integrations"
+    id = Column(String, primary_key=True)
+    config = Column(JSON, default=dict, nullable=False)
+    secret = Column(Text, nullable=True)
+    enabled = Column(Boolean, default=False, nullable=False)
+    error = Column(String, nullable=True)
+    paused = Column(Boolean, default=False, nullable=False)
+    last_success = Column(DateTime, nullable=True)
+    last_reconcile = Column(DateTime, nullable=True)
+
+
+class CalendarJob(Base):
+    __tablename__ = "calendar_jobs"
+    slot_id = Column(String, primary_key=True)
+    revision = Column(Integer, default=1, nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    due_at = Column(DateTime, default=utcnow, nullable=False)
+
+
+class CalendarEvent(Base):
+    __tablename__ = "calendar_events"
+    slot_id = Column(String, primary_key=True)
+    uid = Column(String, unique=True, nullable=False)
+    href = Column(String, nullable=False)
+    etag = Column(String, nullable=True)

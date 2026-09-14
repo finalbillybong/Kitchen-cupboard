@@ -1,8 +1,10 @@
 import { configureOutbox, enqueueMutation } from '../offline/outbox';
 
+import { setNetworkAvailable } from '../offline/connectivity';
+
 const API_BASE = '/api';
 
-class ApiClient {
+export class ApiClient {
   constructor() {
     this.token = localStorage.getItem('token');
   }
@@ -18,7 +20,7 @@ class ApiClient {
 
   async request(path, options = {}) {
     const headers = {
-      'Content-Type': 'application/json',
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       ...options.headers,
     };
 
@@ -30,6 +32,8 @@ class ApiClient {
       ...options,
       headers,
     });
+
+    setNetworkAvailable(response.headers?.get('X-KC-Offline') !== '1');
 
     if (response.status === 401 && !options._isRetry) {
       // Try refreshing the token before giving up
@@ -140,7 +144,7 @@ class ApiClient {
   }
 
   getMe() {
-    return this.request('/auth/me');
+    return this.cachedLibraryRead('/auth/me', 'profile');
   }
 
   updateMe(data) {
@@ -345,14 +349,50 @@ class ApiClient {
   // Global library. Successful reads are cached so the library remains
   // browsable while disconnected; mutations are deliberately handled by the
   // UI only while online, except idempotent add-to-list commits.
+  identity() {
+    try { return JSON.parse(atob(this.token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))).sub; }
+    catch { return 'no-session'; }
+  }
+
+  async blob(path) {
+    let response = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${this.token}` } });
+    if (response.status === 401 && await this.tryRefresh()) {
+      response = await fetch(`/api${path}`, { headers: { Authorization: `Bearer ${this.token}` } });
+    }
+    if (!response.ok) throw new Error('Download failed. Reconnect and sign in again.');
+    return response.blob();
+  }
+
+  async download(path, filename) {
+    const blob = await this.blob(path);
+    if (window.KitchenDownloads) {
+      const reader = new FileReader();
+      reader.onload = () => window.KitchenDownloads.save(filename, blob.type, reader.result.split(',')[1]);
+      reader.readAsDataURL(blob);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
   async cachedLibraryRead(path, cacheKey) {
+    const identity = this.identity();
+    cacheKey = `${identity}-${cacheKey}`;
     try {
       const data = await this.request(path);
-      localStorage.setItem(`kc-library-${cacheKey}`, JSON.stringify(data));
+      try {
+        const prefix = `kc-library-${identity}-`;
+        const keys = Object.keys(localStorage).filter(key => key.startsWith(prefix));
+        keys.slice(0, Math.max(0, keys.length - 99)).forEach(key => localStorage.removeItem(key));
+        localStorage.setItem(`kc-library-${cacheKey}`, JSON.stringify(data));
+      } catch { /* Reads still succeed when browser storage is full. */ }
       return data;
     } catch (error) {
       const cached = localStorage.getItem(`kc-library-${cacheKey}`);
       if (cached && (typeof navigator === 'undefined' || !navigator.onLine || error instanceof TypeError)) {
+        setNetworkAvailable(false);
         return JSON.parse(cached);
       }
       throw error;

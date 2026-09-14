@@ -7,6 +7,8 @@ import ListsPage from './pages/ListsPage';
 import ListDetailPage from './pages/ListDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
+import RecipesPage, { RecipeDetailPage } from './pages/RecipesPage';
+import PlannerPage, { PantryPage } from './pages/PlannerPage';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -56,6 +58,10 @@ export default function App() {
         <Route index element={<ListsPage />} />
         <Route path="list/:listId" element={<ListDetailPage />} />
         <Route path="library" element={<LibraryPage />} />
+        <Route path="recipes" element={<RecipesPage />} />
+        <Route path="recipes/:mealId" element={<RecipeDetailPage />} />
+        <Route path="planner" element={<PlannerPage />} />
+        <Route path="pantry" element={<PantryPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>
