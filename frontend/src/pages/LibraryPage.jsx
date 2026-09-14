@@ -153,9 +153,14 @@ export function MealEditor({ open, meal, ingredients, categories, online, onClos
   const save = async (event) => {
     event.preventDefault();
     if (!online) return;
+    if (!form.name.trim() || form.name.trim().length > 200) {
+      setEditorError('Enter a recipe name between 1 and 200 characters before saving.');
+      return;
+    }
     setSaving(true);
     const payload = {
       ...form,
+      name: form.name.trim(),
       base_servings: Number(form.base_servings),
       ingredients: form.ingredients.map((row) => ({
         ...(row.ingredient_id ? { ingredient_id: row.ingredient_id } : { name: row.name.trim() }),
@@ -180,9 +185,11 @@ export function MealEditor({ open, meal, ingredients, categories, online, onClos
   };
 
   return (
-    <Modal error={editorError} open={open} onClose={onClose} title={meal ? 'Edit meal' : 'New meal'} wide>
+    <Modal error={editorError} open={open} onClose={onClose} title={meal?.review_required ? 'Review photo import' : meal ? 'Edit meal' : 'New meal'} wide>
       <form onSubmit={save} className="space-y-4">
-        <input aria-label="Meal name" className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Meal name" required autoFocus />
+        {meal?.review_required && !form.name.trim() && <p role="status">The recipe title could not be read. Enter a name below before saving.</p>}
+        {meal?.review_required && form.name.trim().length > 200 && <p role="status">Shorten the recipe name to 200 characters before saving.</p>}
+        <input aria-label="Meal name" className="input" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Meal name" required maxLength={200} autoFocus />
         <textarea aria-label="Meal description" className="input" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} placeholder="Description" />
         <label className="block">Method (one step per line)<textarea aria-label="Method" className="input" value={(form.steps || []).join('\n')} onChange={e => setForm({...form, steps: e.target.value.split('\n')})} /></label>
         <label className="block">Recipe category<input aria-label="Recipe category" className="input" value={form.recipe_category || ''} onChange={e => setForm({...form, recipe_category: e.target.value})} /></label>

@@ -1,5 +1,40 @@
 import { expect, test } from '@playwright/test';
 
+test('photo draft without a title opens for review and requires a name to save', async ({ page, request, browserName }) => {
+  const name = `photo-${browserName}-${Date.now()}`;
+  const registered = await request.post('/api/auth/register', { data: {
+    username: name, email: `${name}@example.test`, password: 'correct-horse-battery-staple',
+  } });
+  expect(registered.ok()).toBeTruthy();
+  const { access_token: token } = await registered.json();
+  await page.route('**/api/recipes/import/status', route => route.fulfill({ json: { configured: true } }));
+  await page.route('**/api/recipes/import/photos', route => route.fulfill({ json: {
+    name: '', description: '', base_servings: 2, source_url: null,
+    prep_minutes: 0, cook_minutes: 0, tags: [], steps: ['Stir gently.'],
+    ingredients: [{ name: `Herbs ${name}`, quantity: null, unit: '', notes: 'to taste', scales_with_servings: true }],
+    image_ids: [], review_required: true,
+  } }));
+  await page.goto('/login');
+  await page.evaluate(token => localStorage.setItem('token', token), token);
+  await page.goto('/recipes');
+  await page.getByText('Import a recipe', { exact: true }).click();
+  await page.getByLabel('Recipe photos').setInputFiles({
+    name: 'recipe.png', mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=', 'base64'),
+  });
+  await page.getByRole('button', { name: 'Review photo import', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review photo import' })).toBeVisible();
+  await expect(page.getByText('The recipe title could not be read. Enter a name below before saving.')).toBeVisible();
+  await expect(page.getByLabel('Method', { exact: true })).toHaveValue('Stir gently.');
+  await page.getByRole('button', { name: 'Save meal', exact: true }).click();
+  expect(await page.getByLabel('Meal name', { exact: true }).evaluate(input => input.validity.valueMissing)).toBeTruthy();
+  await expect(page.getByRole('heading', { name: 'Review photo import' })).toBeVisible();
+  await page.getByLabel('Meal name', { exact: true }).fill(name);
+  await page.getByRole('button', { name: 'Save meal', exact: true }).click();
+  await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
+  await expect(page.getByText('Stir gently.', { exact: true })).toBeVisible();
+});
+
 test('recipe scaling, reviewed scheduling, groceries and offline viewing', async ({
   page,
   request,

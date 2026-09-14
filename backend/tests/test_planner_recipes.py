@@ -627,6 +627,86 @@ def test_photo_order_draft_only_limits_errors_and_credentials(
 
 
 @pytest.mark.parametrize(
+    "name_fields",
+    [
+        {},
+        {"name": None},
+        {"name": ""},
+        {"name": "   "},
+        {"name": 123},
+        {"name": "N" * 201},
+    ],
+)
+def test_photo_title_can_be_corrected_in_review_before_saving(
+    api_client, tmp_path, monkeypatch, name_fields
+):
+    c, f = api_client
+    h = bearer(f["jwt"])
+    from config import settings
+
+    monkeypatch.setattr(settings, "DATA_DIR", str(tmp_path))
+    with SessionLocal() as db:
+        db.add(
+            Integration(
+                id="vision",
+                config={"url": "https://vision.example/chat", "model": "vision"},
+                secret=encrypt("private-provider-key"),
+                enabled=True,
+            )
+        )
+        db.commit()
+
+    async def response(self, url, **kwargs):
+        return httpx.Response(
+            200,
+            request=httpx.Request("POST", url),
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    **name_fields,
+                                    "steps": ["Stir."],
+                                    "ingredients": [
+                                        {
+                                            "name": "Salt",
+                                            "quantity": None,
+                                            "notes": "to taste",
+                                        }
+                                    ],
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        )
+
+    with patch("integrations.validate_endpoint"), patch(
+        "httpx.AsyncClient.post", new=response
+    ):
+        result = c.post(
+            "/api/recipes/import/photos",
+            headers=h,
+            files=[("files", ("recipe.png", png("red"), "image/png"))],
+        )
+    assert result.status_code == 200, result.text
+    draft = result.json()
+    assert draft["review_required"] and len(draft["image_ids"]) == 1
+    assert draft["steps"] == ["Stir."]
+    assert draft["ingredients"][0]["quantity"] is None
+    with SessionLocal() as db:
+        assert db.query(Meal).count() == 0
+    # Import drafts can be incomplete; the saved-meal API still enforces a title.
+    assert c.post("/api/meals", headers=h, json=draft).status_code == 422
+    saved = c.post("/api/meals", headers=h, json={**draft, "name": "Reviewed recipe"})
+    assert saved.status_code == 201, saved.text
+    assert saved.json()["name"] == "Reviewed recipe"
+    assert saved.json()["ingredients"][0]["notes"] == "to taste"
+
+
+@pytest.mark.parametrize(
     "scenario,status,code,message,reason",
     [
         ("http", 429, "credit_balance_exhausted", "API credits", "credits"),
