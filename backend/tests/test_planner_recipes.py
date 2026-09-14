@@ -518,11 +518,17 @@ def test_photo_order_draft_only_limits_errors_and_credentials(
                             "content": json.dumps(
                                 {
                                     "name": "Photo soup",
+                                    "description": None,
+                                    "recipe_category": None,
+                                    "prep_minutes": None,
+                                    "cook_minutes": None,
+                                    "tags": None,
                                     "steps": ["Cook."],
                                     "ingredients": [
                                         {
                                             "name": "Salt",
                                             "quantity": None,
+                                            "unit": None,
                                             "notes": "to taste",
                                         }
                                     ],
@@ -548,6 +554,12 @@ def test_photo_order_draft_only_limits_errors_and_credentials(
     assert result.status_code == 200, result.text
     draft = result.json()
     assert len(draft["image_ids"]) == 2 and draft["review_required"]
+    assert draft["prep_minutes"] == draft["cook_minutes"] == 0
+    assert draft["description"] == draft["recipe_category"] == ""
+    assert draft["tags"] == [] and draft["steps"] == ["Cook."]
+    assert draft["ingredients"][0]["quantity"] is None
+    assert draft["ingredients"][0]["unit"] == ""
+    assert draft["ingredients"][0]["notes"] == "to taste"
     assert observed[0] != observed[1]
     with SessionLocal() as db:
         assert db.query(Meal).count() == 0
@@ -612,6 +624,98 @@ def test_photo_order_draft_only_limits_errors_and_credentials(
             ).status_code
             == 502
         )
+
+
+@pytest.mark.parametrize(
+    "scenario,status,code,message,reason",
+    [
+        ("http", 429, "credit_balance_exhausted", "API credits", "credits"),
+        ("http", 429, "insufficient_quota", "API credits", "credits"),
+        (
+            "http",
+            429,
+            "project_spend_limit_exceeded",
+            "spending or usage limit",
+            "spend_limit",
+        ),
+        ("http", 401, "invalid_api_key", "API key", "credentials"),
+        ("http", 429, "rate_limit_exceeded", "rate limiting", "rate_limit"),
+        ("http", 400, "invalid_request", "rejected the request", "request_rejected"),
+        ("http", 503, "unavailable", "unavailable", "provider_unavailable"),
+        ("timeout", 200, None, "too long", "timeout"),
+        ("malformed", 200, None, "readable recipe", "invalid_response"),
+        ("invalid", 200, None, "ingredients.0.quantity", "invalid_recipe"),
+        ("truncated", 200, None, "response limit", "truncated"),
+    ],
+)
+def test_photo_failures_are_actionable_without_leaking_provider_data(
+    api_client, tmp_path, monkeypatch, caplog, scenario, status, code, message, reason
+):
+    c, f = api_client
+    h = bearer(f["jwt"])
+    from config import settings
+
+    monkeypatch.setattr(settings, "DATA_DIR", str(tmp_path))
+    secret = "private-provider-key"
+    with SessionLocal() as db:
+        db.add(
+            Integration(
+                id="vision",
+                config={"url": "https://vision.example/chat", "model": "vision"},
+                secret=encrypt(secret),
+                enabled=True,
+            )
+        )
+        db.commit()
+
+    async def response(self, url, **kwargs):
+        request = httpx.Request("POST", url)
+        if scenario == "timeout":
+            raise httpx.ReadTimeout(secret, request=request)
+        if scenario == "http":
+            payload = {"error": {"code": code, "message": "Credential: " + secret}}
+        else:
+            content = secret
+            if scenario == "invalid":
+                content = json.dumps(
+                    {
+                        "name": "Soup",
+                        "ingredients": [{"name": "Salt", "quantity": secret}],
+                    }
+                )
+            payload = {
+                "choices": [
+                    {
+                        "finish_reason": (
+                            "length" if scenario == "truncated" else "stop"
+                        ),
+                        "message": {"content": content},
+                    }
+                ]
+            }
+        return httpx.Response(
+            status,
+            request=request,
+            headers={"x-request-id": "req_safe123"},
+            json=payload,
+        )
+
+    with patch("integrations.validate_endpoint"), patch(
+        "httpx.AsyncClient.post", new=response
+    ):
+        result = c.post(
+            "/api/recipes/import/photos",
+            headers=h,
+            files=[("files", ("recipe.png", png("red"), "image/png"))],
+        )
+    assert result.status_code == 502
+    assert message in result.json()["detail"]
+    assert f"reason={reason}" in caplog.text
+    assert secret not in result.text and secret not in caplog.text
+    if scenario != "timeout":
+        assert "request_id=req_safe123" in caplog.text
+    with SessionLocal() as db:
+        assert db.query(Meal).count() == db.query(RecipeImage).count() == 0
 
 
 def test_admin_secrets_encrypted_and_interactive_only(
