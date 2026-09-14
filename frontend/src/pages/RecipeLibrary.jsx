@@ -732,7 +732,14 @@ export function RecipeDetailPage() {
             <button
               className="btn-ghost text-red-600"
               disabled={!online}
-              onClick={() => act(() => api.archiveMeal(mealId, recipe.version))}
+              onClick={async () => {
+                try {
+                  await api.archiveMeal(mealId, recipe.version);
+                  navigate('/library');
+                } catch (error) {
+                  setError(error.message);
+                }
+              }}
             >
               Archive recipe
             </button>
