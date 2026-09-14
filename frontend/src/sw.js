@@ -1,4 +1,5 @@
-import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching';
+import { cleanupOutdatedCaches, precacheAndRoute, matchPrecache } from 'workbox-precaching';
+import { clientsClaim } from 'workbox-core';
 import { registerRoute, setCatchHandler } from 'workbox-routing';
 import { CacheFirst, NetworkFirst } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -7,6 +8,7 @@ import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 cleanupOutdatedCaches();
 precacheAndRoute(self.__WB_MANIFEST);
 self.skipWaiting();
+clientsClaim();
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key.startsWith('kc-api-read-') && key !== 'kc-api-read-v3').map(key => caches.delete(key)))));
 });
@@ -69,6 +71,6 @@ registerRoute(
 );
 
 setCatchHandler(async ({ event }) => {
-  if (event.request.destination === 'document') return caches.match('/index.html');
+  if (event.request.destination === 'document') return matchPrecache('/index.html');
   return Response.error();
 });

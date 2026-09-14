@@ -480,6 +480,7 @@ class GroceryPreview(BaseModel):
     week: date
     list_id: str
     include_staples: list[str] = Field(default_factory=list)
+    exclude_keys: list[str] = Field(default_factory=list)
 
 
 def grocery_requirements(data, db):
@@ -538,6 +539,11 @@ def grocery_requirements(data, db):
                     "notes": row.notes,
                 }
             )
+    for row in excluded.values():
+        row["exclusion_reason"] = "usually_have"
+    for key in data.exclude_keys:
+        if key in output:
+            excluded[key] = {**output.pop(key), "exclusion_reason": "already_have"}
     return output, list(excluded.values())
 
 
@@ -624,7 +630,8 @@ def preview_groceries(
         "token": token,
         "changes": changes,
         "requirements": list(required.values()),
-        "excluded_staples": excluded,
+        "excluded_staples": [row for row in excluded if row["exclusion_reason"] == "usually_have"],
+        "excluded_items": excluded,
     }
 
 

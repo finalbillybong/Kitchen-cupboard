@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
@@ -7,8 +7,13 @@ import ListsPage from './pages/ListsPage';
 import ListDetailPage from './pages/ListDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import LibraryPage from './pages/LibraryPage';
-import RecipesPage, { RecipeDetailPage } from './pages/RecipesPage';
-import PlannerPage, { PantryPage } from './pages/PlannerPage';
+import { RecipeDetailPage } from './pages/RecipeLibrary';
+import PlannerPage from './pages/PlannerPage';
+
+function LegacyRecipeRoute() {
+  const { mealId } = useParams();
+  return <Navigate replace to={`/library/recipes/${mealId}`} />;
+}
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -58,10 +63,16 @@ export default function App() {
         <Route index element={<ListsPage />} />
         <Route path="list/:listId" element={<ListDetailPage />} />
         <Route path="library" element={<LibraryPage />} />
-        <Route path="recipes" element={<RecipesPage />} />
-        <Route path="recipes/:mealId" element={<RecipeDetailPage />} />
+        <Route path="recipes" element={<Navigate replace to="/library" />} />
+        <Route path="recipes/:mealId" element={<LegacyRecipeRoute />} />
+        <Route path="library/recipes/:mealId" element={<RecipeDetailPage />} />
         <Route path="planner" element={<PlannerPage />} />
-        <Route path="pantry" element={<PantryPage />} />
+        <Route
+          path="pantry"
+          element={
+            <Navigate replace to="/library?tab=ingredients&usually=true" />
+          }
+        />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

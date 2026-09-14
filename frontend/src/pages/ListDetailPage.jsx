@@ -4,20 +4,30 @@ import api from '../api/client';
 import { useAuth } from '../hooks/useAuth';
 import { usePreferences } from '../hooks/usePreferences';
 import { useWebSocket } from '../hooks/useWebSocket';
-import { useRecipeImport } from '../hooks/useRecipeImport';
 import { useDragReorder } from '../hooks/useDragReorder';
 import Modal from '../components/Modal';
 import ShareModal from '../components/ShareModal';
-import RecipeImportModal from '../components/RecipeImportModal';
+import { AddToListModal } from '../components/RecipeEditor';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import FavouritesBar from '../components/FavouritesBar';
 import ItemAddForm from '../components/ItemAddForm';
 import PullToRefresh from '../components/PullToRefresh';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { hasPendingEntity, projectPendingItems } from '../offline/outbox';
 import {
-  ArrowLeft, Trash2, Check, Settings2,
-  ChevronDown, ChevronRight, UserPlus, Archive, Search,
-  GripVertical, ArrowUpDown, BookOpen, CloudUpload,
+  ArrowLeft,
+  Trash2,
+  Check,
+  Settings2,
+  ChevronDown,
+  ChevronRight,
+  UserPlus,
+  Archive,
+  Search,
+  GripVertical,
+  ArrowUpDown,
+  MoreHorizontal,
+  CloudUpload,
 } from 'lucide-react';
 
 export default function ListDetailPage() {
@@ -38,7 +48,11 @@ export default function ListDetailPage() {
   const [editItem, setEditItem] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({
-    name: '', quantity: '1', unit: '', category_id: '', notes: '',
+    name: '',
+    quantity: '1',
+    unit: '',
+    category_id: '',
+    notes: '',
   });
 
   // Collapsed categories
@@ -48,7 +62,9 @@ export default function ListDetailPage() {
   const [favourites, setFavourites] = useState([]);
 
   // Custom hooks
-  const recipe = useRecipeImport(listId);
+  const { online } = useOnlineStatus();
+  const [basicsSource, setBasicsSource] = useState(null);
+  const destinationLists = useMemo(() => (list ? [list] : []), [list]);
   const drag = useDragReorder(listId, items, setItems);
 
   const fetchData = useCallback(async () => {
@@ -58,13 +74,29 @@ export default function ListDetailPage() {
         api.getItems(listId),
         api.getCategories(),
       ]);
-      const projectedItems = await projectPendingItems(listId, itemsData, catsData);
+      const projectedItems = await projectPendingItems(
+        listId,
+        itemsData,
+        catsData,
+      );
       setList(listData);
-      setItems((current) => projectedItems.map((serverItem) => {
-        const local = current.find((item) => item.id === serverItem.id);
-        return local && hasPendingEntity(serverItem.id) ? local : serverItem;
-      }).concat(current.filter((item) => item._pending && hasPendingEntity(item.id)
-        && !projectedItems.some((serverItem) => serverItem.id === item.id))));
+      setItems((current) =>
+        projectedItems
+          .map((serverItem) => {
+            const local = current.find((item) => item.id === serverItem.id);
+            return local && hasPendingEntity(serverItem.id)
+              ? local
+              : serverItem;
+          })
+          .concat(
+            current.filter(
+              (item) =>
+                item._pending &&
+                hasPendingEntity(item.id) &&
+                !projectedItems.some((serverItem) => serverItem.id === item.id),
+            ),
+          ),
+      );
       setCategories(catsData);
     } catch (e) {
       console.error(e);
@@ -92,54 +124,80 @@ export default function ListDetailPage() {
 
   // Fetch favourites
   useEffect(() => {
-    api.getFavourites(15).then(setFavourites).catch(() => {});
+    api
+      .getFavourites(15)
+      .then(setFavourites)
+      .catch(() => {});
   }, []);
 
   // WebSocket for real-time updates
-  const handleWsMessage = useCallback((msg) => {
-    if (msg.user_id === user?.id) return;
+  const handleWsMessage = useCallback(
+    (msg) => {
+      if (msg.user_id === user?.id) return;
 
-    switch (msg.type) {
-      case 'list_updated':
-        fetchData();
-        break;
-      case 'item_added':
-        if (hasPendingEntity(msg.data.id)) break;
-        setItems((prev) => [...prev.filter((i) => i.id !== msg.data.id), msg.data]);
-        break;
-      case 'item_updated':
-      case 'item_checked':
-        if (hasPendingEntity(msg.data.id)) break;
-        setItems((prev) => prev.map((i) => (i.id === msg.data.id ? msg.data : i)));
-        break;
-      case 'item_removed':
-        if (hasPendingEntity(msg.data.id)) break;
-        setItems((prev) => prev.filter((i) => i.id !== msg.data.id));
-        break;
-      case 'checked_cleared':
-        setItems((prev) => msg.data.item_ids
-          ? prev.filter((i) => !msg.data.item_ids.includes(i.id) || hasPendingEntity(i.id))
-          : prev.filter((i) => !i.checked || hasPendingEntity(i.id)));
-        break;
-      case 'items_reordered': {
-        if (msg.data.item_ids.some(hasPendingEntity)) break;
-        const orderMap = {};
-        msg.data.item_ids.forEach((id, i) => { orderMap[id] = i; });
-        setItems((prev) => prev.map((item) =>
-          orderMap[item.id] !== undefined ? { ...item, sort_order: orderMap[item.id] } : item
-        ));
-        break;
+      switch (msg.type) {
+        case 'list_updated':
+          fetchData();
+          break;
+        case 'item_added':
+          if (hasPendingEntity(msg.data.id)) break;
+          setItems((prev) => [
+            ...prev.filter((i) => i.id !== msg.data.id),
+            msg.data,
+          ]);
+          break;
+        case 'item_updated':
+        case 'item_checked':
+          if (hasPendingEntity(msg.data.id)) break;
+          setItems((prev) =>
+            prev.map((i) => (i.id === msg.data.id ? msg.data : i)),
+          );
+          break;
+        case 'item_removed':
+          if (hasPendingEntity(msg.data.id)) break;
+          setItems((prev) => prev.filter((i) => i.id !== msg.data.id));
+          break;
+        case 'checked_cleared':
+          setItems((prev) =>
+            msg.data.item_ids
+              ? prev.filter(
+                  (i) =>
+                    !msg.data.item_ids.includes(i.id) || hasPendingEntity(i.id),
+                )
+              : prev.filter((i) => !i.checked || hasPendingEntity(i.id)),
+          );
+          break;
+        case 'items_reordered': {
+          if (msg.data.item_ids.some(hasPendingEntity)) break;
+          const orderMap = {};
+          msg.data.item_ids.forEach((id, i) => {
+            orderMap[id] = i;
+          });
+          setItems((prev) =>
+            prev.map((item) =>
+              orderMap[item.id] !== undefined
+                ? { ...item, sort_order: orderMap[item.id] }
+                : item,
+            ),
+          );
+          break;
+        }
+        default:
+          break;
       }
-      default:
-        break;
-    }
-  }, [user?.id, fetchData]);
+    },
+    [user?.id, fetchData],
+  );
 
   useWebSocket(listId, handleWsMessage);
 
   const handleToggleCheck = async (item) => {
     const checked = !item.checked;
-    setItems((prev) => prev.map((i) => (i.id === item.id ? { ...i, checked, _pending: true } : i)));
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === item.id ? { ...i, checked, _pending: true } : i,
+      ),
+    );
     try {
       await api.updateItem(listId, item.id, { checked });
     } catch (error) {
@@ -172,7 +230,8 @@ export default function ListDetailPage() {
   };
 
   const handleDeleteList = async () => {
-    if (!confirm('Delete this list and all its items? This cannot be undone.')) return;
+    if (!confirm('Delete this list and all its items? This cannot be undone.'))
+      return;
     try {
       await api.deleteList(listId);
       navigate('/');
@@ -221,13 +280,6 @@ export default function ListDetailPage() {
     }
   };
 
-  const handleRecipeImport = async () => {
-    const importedItems = await recipe.handleRecipeImport();
-    if (importedItems) {
-      setItems((prev) => [...prev, ...importedItems]);
-    }
-  };
-
   // ─── Edit Item (long press) ───────────────────────────────────
   const openEditModal = (item) => {
     setEditItem(item);
@@ -253,18 +305,27 @@ export default function ListDetailPage() {
       };
       const original = editItem;
       const cat = categories.find((c) => c.id === payload.category_id);
-      setItems((prev) => prev.map((i) => (i.id === editItem.id ? {
-        ...i, ...payload,
-        category_name: cat?.name || null,
-        category_color: cat?.color || null,
-        _pending: true,
-      } : i)));
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === editItem.id
+            ? {
+                ...i,
+                ...payload,
+                category_name: cat?.name || null,
+                category_color: cat?.color || null,
+                _pending: true,
+              }
+            : i,
+        ),
+      );
       setShowEditModal(false);
       setEditItem(null);
       try {
         await api.updateItem(listId, original.id, payload);
       } catch (error) {
-        setItems((prev) => prev.map((item) => item.id === original.id ? original : item));
+        setItems((prev) =>
+          prev.map((item) => (item.id === original.id ? original : item)),
+        );
         alert(`Could not save the edit: ${error.message}`);
       }
     } catch (e) {
@@ -292,8 +353,10 @@ export default function ListDetailPage() {
     }
 
     for (const group of Object.values(groups)) {
-      group.items.sort((a, b) =>
-        a.sort_order - b.sort_order || new Date(a.created_at) - new Date(b.created_at)
+      group.items.sort(
+        (a, b) =>
+          a.sort_order - b.sort_order ||
+          new Date(a.created_at) - new Date(b.created_at),
       );
     }
 
@@ -317,9 +380,16 @@ export default function ListDetailPage() {
   if (!list) return null;
 
   const isOwner = list.owner_id === user?.id;
+  const canEdit =
+    isOwner ||
+    list.members?.some(
+      (member) => member.user_id === user?.id && member.role !== 'viewer',
+    );
 
   const itemNamesLower = new Set(items.map((i) => i.name.toLowerCase()));
-  const availableFavourites = favourites.filter((f) => !itemNamesLower.has(f.name.toLowerCase()));
+  const availableFavourites = favourites.filter(
+    (f) => !itemNamesLower.has(f.name.toLowerCase()),
+  );
 
   return (
     <div>
@@ -332,7 +402,9 @@ export default function ListDetailPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-bold truncate">{list.name}</h1>
           {list.description && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{list.description}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+              {list.description}
+            </p>
           )}
         </div>
         <div className="flex items-center gap-1">
@@ -348,14 +420,19 @@ export default function ListDetailPage() {
             <ArrowUpDown className="h-4 w-4" />
             {drag.reorderMode && <span>Done</span>}
           </button>
-          <button onClick={recipe.openRecipeModal} className="btn-ghost p-2" title="Import recipe">
-            <BookOpen className="h-5 w-5" />
-          </button>
-          <button onClick={() => setShowShareModal(true)} className="btn-ghost p-2" title="Share">
+          <button
+            onClick={() => setShowShareModal(true)}
+            className="btn-ghost p-2"
+            title="Share"
+          >
             <UserPlus className="h-5 w-5" />
           </button>
           {isOwner && (
-            <button onClick={() => setShowSettingsModal(true)} className="btn-ghost p-2" title="Settings">
+            <button
+              onClick={() => setShowSettingsModal(true)}
+              className="btn-ghost p-2"
+              title="Settings"
+            >
               <Settings2 className="h-5 w-5" />
             </button>
           )}
@@ -376,27 +453,71 @@ export default function ListDetailPage() {
           listId={listId}
           categories={categories}
           onItemAdded={(item) => setItems((prev) => [...prev, item])}
-          onItemAddFailed={(id) => setItems((prev) => prev.filter((item) => item.id !== id))}
+          onItemAddFailed={(id) =>
+            setItems((prev) => prev.filter((item) => item.id !== id))
+          }
         />
       )}
 
+      {canEdit && !drag.reorderMode && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            className="btn-ghost text-sm"
+            onClick={async () => {
+              try {
+                setBasicsSource(await api.getBasics());
+              } catch (error) {
+                alert(error.message);
+              }
+            }}
+          >
+            Add from Basics
+          </button>
+          <Link className="btn-ghost text-sm" to={`/library?list=${listId}`}>
+            Add from recipes
+          </Link>
+        </div>
+      )}
+      {basicsSource && (
+        <AddToListModal
+          open
+          source={basicsSource}
+          sourceType="basics"
+          lists={destinationLists}
+          initialListId={listId}
+          online={online}
+          onClose={() => setBasicsSource(null)}
+          onQueued={() => fetchData()}
+          onError={(error) => alert(error.message)}
+        />
+      )}
       {/* Favourites / Quick Add */}
       {!drag.reorderMode && (
-        <FavouritesBar favourites={availableFavourites} onQuickAdd={handleQuickAdd} />
+        <FavouritesBar
+          favourites={availableFavourites}
+          onQuickAdd={handleQuickAdd}
+        />
       )}
 
       {/* Items grouped by category */}
       {sortedGroups.length === 0 && checked.length === 0 ? (
         <div className="text-center py-16">
           <Search className="h-12 w-12 text-gray-300 dark:text-gray-700 mx-auto mb-3" />
-          <p className="text-gray-400 dark:text-gray-500">No items yet. Add something above!</p>
+          <p className="text-gray-400 dark:text-gray-500">
+            No items yet. Add something above!
+          </p>
         </div>
       ) : (
         <div className="space-y-4" ref={drag.itemsContainerRef}>
           {sortedGroups.map((group) => (
             <div key={group.id}>
               <button
-                onClick={() => setCollapsed({ ...collapsed, [group.id]: !collapsed[group.id] })}
+                onClick={() =>
+                  setCollapsed({
+                    ...collapsed,
+                    [group.id]: !collapsed[group.id],
+                  })
+                }
                 className="flex items-center gap-2 mb-2 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
               >
                 {collapsed[group.id] ? (
@@ -409,7 +530,9 @@ export default function ListDetailPage() {
                   style={{ backgroundColor: group.color }}
                 />
                 {group.name}
-                <span className="text-gray-400 font-normal">({group.items.length})</span>
+                <span className="text-gray-400 font-normal">
+                  ({group.items.length})
+                </span>
               </button>
               {!collapsed[group.id] && (
                 <div className="space-y-1">
@@ -422,9 +545,15 @@ export default function ListDetailPage() {
                       onDelete={handleDeleteItem}
                       onEdit={openEditModal}
                       reorderMode={drag.reorderMode}
-                      onDragStart={drag.reorderMode ? drag.handleDragStart : undefined}
-                      onDragEnter={drag.reorderMode ? drag.handleDragEnter : undefined}
-                      onDragEnd={drag.reorderMode ? drag.handleDragEnd : undefined}
+                      onDragStart={
+                        drag.reorderMode ? drag.handleDragStart : undefined
+                      }
+                      onDragEnter={
+                        drag.reorderMode ? drag.handleDragEnter : undefined
+                      }
+                      onDragEnd={
+                        drag.reorderMode ? drag.handleDragEnd : undefined
+                      }
                       isDragging={drag.draggingId === item.id}
                       tapMode={prefs.tapMode}
                     />
@@ -439,7 +568,9 @@ export default function ListDetailPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <button
-                  onClick={() => setCollapsed({ ...collapsed, checked: !collapsed.checked })}
+                  onClick={() =>
+                    setCollapsed({ ...collapsed, checked: !collapsed.checked })
+                  }
                   className="flex items-center gap-2 text-sm font-semibold text-gray-400 dark:text-gray-500"
                 >
                   {collapsed.checked ? (
@@ -449,7 +580,10 @@ export default function ListDetailPage() {
                   )}
                   Completed ({checked.length})
                 </button>
-                <button onClick={handleClearChecked} className="text-xs text-red-500 hover:text-red-600 font-medium">
+                <button
+                  onClick={handleClearChecked}
+                  className="text-xs text-red-500 hover:text-red-600 font-medium"
+                >
                   Clear all
                 </button>
               </div>
@@ -475,63 +609,108 @@ export default function ListDetailPage() {
       )}
 
       {/* Edit Item Modal */}
-      <Modal open={showEditModal} onClose={() => setShowEditModal(false)} title="Edit Item">
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Edit Item"
+      >
         <div className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Name
+            </label>
             <input
               type="text"
               value={editForm.name}
-              onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+              onChange={(e) =>
+                setEditForm({ ...editForm, name: e.target.value })
+              }
               className="input"
               autoFocus
             />
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Quantity</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Quantity
+              </label>
               <input
                 type="number"
                 value={editForm.quantity}
-                onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, quantity: e.target.value })
+                }
                 className="input"
                 min="0"
                 step="any"
               />
             </div>
             <div className="flex-1">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Unit</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Unit
+              </label>
               <input
                 type="text"
                 value={editForm.unit}
-                onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, unit: e.target.value })
+                }
                 className="input"
                 placeholder="kg, litres, packs..."
               />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Category</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Shopping aisle
+            </label>
             <select
               value={editForm.category_id}
-              onChange={(e) => setEditForm({ ...editForm, category_id: e.target.value })}
+              onChange={(e) =>
+                setEditForm({ ...editForm, category_id: e.target.value })
+              }
               className="input"
             >
               <option value="">Uncategorized</option>
               {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Notes</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Notes
+            </label>
             <textarea
               value={editForm.notes}
-              onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+              onChange={(e) =>
+                setEditForm({ ...editForm, notes: e.target.value })
+              }
               className="input min-h-[80px] resize-y"
               placeholder="Any extra details..."
             />
           </div>
+          {canEdit && editItem && !editItem.checked && (
+            <button
+              type="button"
+              className="btn-secondary w-full"
+              onClick={async () => {
+                try {
+                  await api.updateItem(listId, editItem.id, {
+                    already_have: true,
+                  });
+                  setShowEditModal(false);
+                  await fetchData();
+                } catch (error) {
+                  alert(error.message);
+                }
+              }}
+            >
+              Already have
+            </button>
+          )}
           <div className="flex gap-3 pt-2">
             <button
               type="button"
@@ -562,7 +741,11 @@ export default function ListDetailPage() {
       />
 
       {/* Settings Modal */}
-      <Modal open={showSettingsModal} onClose={() => setShowSettingsModal(false)} title="List Settings">
+      <Modal
+        open={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        title="List Settings"
+      >
         <div className="space-y-4">
           <button
             onClick={() => {
@@ -586,28 +769,23 @@ export default function ListDetailPage() {
           </button>
         </div>
       </Modal>
-
-      {/* Recipe Import Modal */}
-      <RecipeImportModal
-        open={recipe.showRecipeModal}
-        onClose={recipe.closeRecipeModal}
-        recipeUrl={recipe.recipeUrl}
-        setRecipeUrl={recipe.setRecipeUrl}
-        recipePreview={recipe.recipePreview}
-        recipeLoading={recipe.recipeLoading}
-        recipeError={recipe.recipeError}
-        recipeImporting={recipe.recipeImporting}
-        onPreview={recipe.handleRecipePreview}
-        onImport={handleRecipeImport}
-      />
     </div>
   );
 }
 
 export function ItemRow({
-  item, groupId, onToggle, onDelete, onEdit,
-  reorderMode, onDragStart, onDragEnter, onDragEnd,
-  isDragging, isChecked, tapMode,
+  item,
+  groupId,
+  onToggle,
+  onDelete,
+  onEdit,
+  reorderMode,
+  onDragStart,
+  onDragEnter,
+  onDragEnd,
+  isDragging,
+  isChecked,
+  tapMode,
 }) {
   const longPressTimer = useRef(null);
   const pointerStart = useRef(null);
@@ -657,20 +835,25 @@ export function ItemRow({
     }
   };
 
-  const dragProps = reorderMode && !isChecked ? {
-    draggable: true,
-    onDragStart: (e) => onDragStart(e, item, groupId),
-    onDragEnter: (e) => onDragEnter(e, item, groupId),
-    onDragEnd: onDragEnd,
-    onDragOver: (e) => e.preventDefault(),
-  } : {};
+  const dragProps =
+    reorderMode && !isChecked
+      ? {
+          draggable: true,
+          onDragStart: (e) => onDragStart(e, item, groupId),
+          onDragEnter: (e) => onDragEnter(e, item, groupId),
+          onDragEnd: onDragEnd,
+          onDragOver: (e) => e.preventDefault(),
+        }
+      : {};
 
-  let rowClass = 'card px-3 py-2.5 flex items-center gap-3 group select-none relative overflow-hidden';
+  let rowClass =
+    'card px-3 py-2.5 flex items-center gap-3 group select-none relative overflow-hidden';
   if (pressing) {
     rowClass += ' long-press-active';
   }
   if (isDragging) {
-    rowClass += ' scale-[1.04] shadow-2xl ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/40 z-50 relative';
+    rowClass +=
+      ' scale-[1.04] shadow-2xl ring-2 ring-primary-500 bg-primary-50 dark:bg-primary-900/40 z-50 relative';
   }
 
   return (
@@ -678,8 +861,14 @@ export function ItemRow({
       data-item-id={item.id}
       data-group-id={groupId}
       className={rowClass}
-      style={isDragging ? { transition: 'none' } : { transition: 'transform 150ms ease, box-shadow 150ms ease' }}
-      onContextMenu={(e) => { if (!reorderMode) e.preventDefault(); }}
+      style={
+        isDragging
+          ? { transition: 'none' }
+          : { transition: 'transform 150ms ease, box-shadow 150ms ease' }
+      }
+      onContextMenu={(e) => {
+        if (!reorderMode) e.preventDefault();
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -700,7 +889,11 @@ export function ItemRow({
       {/* Checkbox - hidden in reorder mode */}
       {!reorderMode && (
         <button
-          onClick={(event) => { event.stopPropagation(); onToggle(item); }}
+          aria-label={`${item.checked ? 'Restore' : 'Bought'} ${item.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggle(item);
+          }}
           className={`flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all ${
             item.checked
               ? 'bg-primary-600 border-primary-600 check-animation'
@@ -715,8 +908,12 @@ export function ItemRow({
       <div
         className={`flex-1 min-w-0${tapMode === 'row' ? ' cursor-pointer' : ''}`}
       >
-        {item.already_have && <span className="text-xs text-primary-600">Already have</span>}
-        <div className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}>
+        {item.already_have && (
+          <span className="text-xs text-primary-600">Already have</span>
+        )}
+        <div
+          className={`font-medium ${item.checked ? 'line-through text-gray-400 dark:text-gray-500' : ''}`}
+        >
           {item.name}
         </div>
         <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
@@ -738,22 +935,43 @@ export function ItemRow({
       </div>
 
       {/* Quantity badge - right side for visibility */}
-      {!item.checked && <button className="btn-ghost text-xs" aria-label={`Already have ${item.name}`} onClick={e => { e.stopPropagation(); api.updateItem(item.list_id, item.id, { already_have: true }); }}>Already have</button>}
+
       {(item.quantity !== 1 || item.unit) && (
-        <span className={`qty-badge flex-shrink-0 ${item.checked ? 'opacity-40' : ''}`}>
-          {item.quantity}{item.unit ? ` ${item.unit}` : ''}
+        <span
+          className={`qty-badge flex-shrink-0 ${item.checked ? 'opacity-40' : ''}`}
+        >
+          {item.quantity}
+          {item.unit ? ` ${item.unit}` : ''}
         </span>
       )}
 
       {/* Pending sync indicator */}
       {item._pending && (
-        <CloudUpload className="h-3.5 w-3.5 flex-shrink-0 text-amber-500 animate-pulse" title="Pending sync" />
+        <CloudUpload
+          className="h-3.5 w-3.5 flex-shrink-0 text-amber-500 animate-pulse"
+          title="Pending sync"
+        />
       )}
 
+      {!reorderMode && (
+        <button
+          className="btn-ghost p-1.5"
+          aria-label={`Options for ${item.name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onEdit(item);
+          }}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      )}
       {/* Delete button - hidden in reorder mode */}
       {!reorderMode && (
         <button
-          onClick={(event) => { event.stopPropagation(); onDelete(item.id); }}
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(item.id);
+          }}
           className="flex-shrink-0 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-1"
           title="Delete"
         >

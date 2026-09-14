@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useTheme } from '../hooks/useTheme';
+import PlannerSettingsTab from './settings/PlannerSettingsTab';
 import { useAuth } from '../hooks/useAuth';
 import { User, Key, Shield, Tag, SlidersHorizontal } from 'lucide-react';
 import ProfileTab from './settings/ProfileTab';
@@ -9,20 +11,30 @@ import AdminTab from './settings/AdminTab';
 import IntegrationsTab from './settings/IntegrationsTab';
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const [tab, setTab] = useState('profile');
+  const { user, logout } = useAuth();
+  const { dark, toggle } = useTheme();
+  const [params, setParams] = useSearchParams();
+  const requestedTab = params.get('tab') || 'profile';
+  const setTab = (tab) => setParams({ tab });
 
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'preferences', label: 'Preferences', icon: SlidersHorizontal },
-    { id: 'categories', label: 'Categories', icon: Tag },
+    { id: 'categories', label: 'Shopping aisles', icon: Tag },
     { id: 'apikeys', label: 'API Keys', icon: Key },
   ];
 
   if (user?.is_admin) {
-    tabs.push({ id: 'integrations', label: 'Integrations', icon: SlidersHorizontal });
+    tabs.push({ id: 'planner', label: 'Planner', icon: SlidersHorizontal });
+    tabs.push({
+      id: 'integrations',
+      label: 'Integrations',
+      icon: SlidersHorizontal,
+    });
     tabs.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
+
+  const tab = tabs.some(item => item.id === requestedTab) ? requestedTab : 'profile';
 
   return (
     <div>
@@ -45,11 +57,24 @@ export default function SettingsPage() {
         ))}
       </div>
 
-      {tab === 'profile' && <ProfileTab />}
+      {tab === 'profile' && (
+        <>
+          <ProfileTab />
+          <div className="flex flex-wrap gap-3 mt-6">
+            <button className="btn-secondary" onClick={toggle}>
+              {dark ? 'Use light theme' : 'Use dark theme'}
+            </button>
+            <button className="btn-ghost text-red-600" onClick={logout}>
+              Sign out
+            </button>
+          </div>
+        </>
+      )}
       {tab === 'preferences' && <PreferencesTab />}
       {tab === 'apikeys' && <ApiKeysTab />}
       {tab === 'categories' && <CategoriesTab />}
-      {tab === 'admin' && <AdminTab />}
+      {tab === 'admin' && user?.is_admin && <AdminTab />}
+      {tab === 'planner' && user?.is_admin && <PlannerSettingsTab />}
       {tab === 'integrations' && user?.is_admin && <IntegrationsTab />}
     </div>
   );
