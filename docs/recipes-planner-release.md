@@ -8,7 +8,7 @@ retain their existing ownership and editor/viewer permissions.
 
 1. **Recipe foundation:** `migrations/`, extended Meal schemas, `units.py`, recipe
    detail/editor screens, categories, tags, ratings and To try.
-2. **Planning and shopping:** `routers/planner_router.py`, Planner/Pantry screens,
+2. **Planning and shopping:** `routers/planner_router.py`, Planner/Library screens,
    versioned reviews, batch portions, suggestions and independent grocery contributions.
 3. **Imports and portability:** `routers/recipes_router.py`, full URL drafts,
    ordered photo drafts, authenticated images/exports, and the Android file bridge.
@@ -17,7 +17,7 @@ retain their existing ownership and editor/viewer permissions.
 
 ## Using the features
 
-- Open **Recipes** to search names/descriptions/ingredients, filter tags or recipe
+- Open **Library → Recipes** to search names/descriptions/ingredients, filter tags or recipe
   category, limit total preparation/cooking time, and sort by shared rating.
 - New recipes and imported drafts share an editor. Enter one method step per line.
   Leave an ingredient quantity blank when it is unknown or "to taste". Preparation
@@ -26,7 +26,7 @@ retain their existing ownership and editor/viewer permissions.
   their rating, manages the shared To try collection, and exports text or PDF.
   CSV and a PDF cookbook export all active recipes; cookbook pages include covers.
 - **Planner** opens a Monday–Sunday week. Dinner starts enabled. Admins configure
-  breakfast/lunch, timezone, meal times and duration in Settings → Integrations.
+  breakfast/lunch, timezone, meal times and duration in Settings → Planner.
   Existing slots retain their chosen times when defaults change.
 - Plan a recipe, leftovers from an earlier cooking session, or a skip/eating-out
   note. Move/swap operations and removals have review screens. Removing a cooking
@@ -38,10 +38,10 @@ retain their existing ownership and editor/viewer permissions.
   Unrated recipes have weight 3/5. Recent exclusion defaults to one previous week;
   "Allow weekly repeat" exempts a recipe from that exclusion. Automatic selections
   do not duplicate recipes within the week. Unmet counts and empty positions are shown.
-- **Pantry staples** means "usually have". It does not track stock or expiry.
+- **Usually have** in Library → Ingredients marks pantry staples. It does not track stock or expiry.
   **Basics** remains the existing regular-purchase checklist.
 - Grocery reviews target a list the caller can edit. Pantry staples start excluded;
-  include them individually during review. Quantities merge only for the same
+  include them individually during review. Any other ingredient can also be unticked as already available for this review. Quantities merge only for the same
   catalogue ingredient and explicit compatible units. Kilograms/grams and
   litres/millilitres convert; weight, volume and counts stay separate.
 - Generated quantities are tracked independently from personal additions. An
@@ -52,6 +52,13 @@ retain their existing ownership and editor/viewer permissions.
 - Recipe/planner reads are cached per account. Their changes, imports, exports and
   grocery commits require a connection. Existing shopping-item edits still use the
   durable offline outbox. Integration routes and exports are not service-worker cached.
+
+The primary navigation is Shopping, Planner and Library. Legacy `/recipes`,
+`/recipes/:id` and `/pantry` links redirect to the matching Library view. Recipe
+IDs and API endpoints remain unchanged. Basics can be added directly from a
+shopping list. Item options contain **Already have**; the main checkbox records a
+purchase. Routine meal edits save immediately through the versioned planner API;
+edits affecting linked leftovers still open a review.
 
 ## Integration setup
 

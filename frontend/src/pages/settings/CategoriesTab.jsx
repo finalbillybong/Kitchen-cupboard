@@ -30,7 +30,7 @@ export default function CategoriesTab() {
   };
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this category?')) return;
+    if (!confirm('Delete this shopping aisle?')) return;
     try {
       await api.deleteCategory(id);
       fetchCategories();
@@ -42,23 +42,37 @@ export default function CategoriesTab() {
   return (
     <div className="card p-5">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-lg">Categories</h2>
-        <button onClick={() => setShowCreate(true)} className="btn-primary flex items-center gap-2 text-sm">
+        <h2 className="font-semibold text-lg">Shopping aisles</h2>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="btn-primary flex items-center gap-2 text-sm"
+        >
           <Plus className="h-4 w-4" />
-          New Category
+          New shopping aisle
         </button>
       </div>
 
       <div className="space-y-2">
         {categories.map((c) => (
-          <div key={c.id} className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-navy-800 rounded-xl">
+          <div
+            key={c.id}
+            className="flex items-center justify-between py-2 px-3 bg-gray-50 dark:bg-navy-800 rounded-xl"
+          >
             <div className="flex items-center gap-3">
-              <span className="w-4 h-4 rounded-full" style={{ backgroundColor: c.color }} />
+              <span
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: c.color }}
+              />
               <span className="font-medium">{c.name}</span>
-              {c.is_default && <span className="text-xs text-gray-400">Default</span>}
+              {c.is_default && (
+                <span className="text-xs text-gray-400">Default</span>
+              )}
             </div>
             {!c.is_default && (
-              <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-500">
+              <button
+                onClick={() => handleDelete(c.id)}
+                className="text-red-400 hover:text-red-500"
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             )}
@@ -66,10 +80,16 @@ export default function CategoriesTab() {
         ))}
       </div>
 
-      <Modal open={showCreate} onClose={() => setShowCreate(false)} title="New Category">
+      <Modal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New shopping aisle"
+      >
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Name</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Name
+            </label>
             <input
               type="text"
               value={newCat.name}
@@ -80,7 +100,9 @@ export default function CategoriesTab() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Color</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Color
+            </label>
             <input
               type="color"
               value={newCat.color}
@@ -89,8 +111,16 @@ export default function CategoriesTab() {
             />
           </div>
           <div className="flex gap-3">
-            <button type="button" onClick={() => setShowCreate(false)} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" className="btn-primary flex-1">Create</button>
+            <button
+              type="button"
+              onClick={() => setShowCreate(false)}
+              className="btn-secondary flex-1"
+            >
+              Cancel
+            </button>
+            <button type="submit" className="btn-primary flex-1">
+              Create
+            </button>
           </div>
         </form>
       </Modal>

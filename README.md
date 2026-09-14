@@ -1,10 +1,20 @@
 # Kitchen Cupboard beta
 
-A collaborative shopping list web app built for self-hosting on Docker/Unraid.
+A shared meal planner and collaborative shopping list app built for self-hosting on Docker/Unraid.
 
 Recipes now include methods, tags, ratings, photos and exports. A shared weekly meal
 planner supports leftovers, suggestions, pantry-aware grocery reviews and optional
 one-way Nextcloud sync. See [setup, migrations and validation](docs/recipes-planner-release.md).
+
+## Everyday use
+
+- **Shopping:** open a list, add items, or choose **Add from Basics** for regular purchases. Tick purchases off; an item's options also let you mark it **Already have**.
+- **Planner:** choose meals for the week, then **Add week to shopping list**. Review quantities and untick anything you already have before applying changes.
+- **Library:** save and find recipes in one place. **Add recipe** offers manual entry, website import and photo import. Review imports before saving; a recipe can be scheduled or added directly to shopping.
+- **Basics** is the reusable regular-purchase checklist inside Library. **Usually have** is a flag in Library → Ingredients; flagged ingredients start excluded from planner shopping reviews.
+- **Settings** is the gear button. Administrators manage planner defaults under **Planner**, and photo AI / Nextcloud connections under **Integrations**.
+
+Shopping edits can queue offline. Previously viewed recipes and plans remain available to read; their edits and planner shopping commits require connectivity.
 
 ## Features
 
@@ -20,7 +30,7 @@ one-way Nextcloud sync. See [setup, migrations and validation](docs/recipes-plan
 - **Dark mode** — automatic or manual toggle
 - **Offline support** — Workbox precaches the app shell; item changes are applied instantly and durably replayed from a credential-free browser outbox
 - **PWA** — installable on Android and iOS home screens with a chef hat icon
-- **Recipe import** — paste a recipe URL and extract ingredients automatically; works with any site using Schema.org JSON-LD (BBC Good Food, AllRecipes, Jamie Oliver, etc)
+- **Recipe import** — import and review a complete recipe from a website or photos; website import works with any site using Schema.org JSON-LD (BBC Good Food, AllRecipes, Jamie Oliver, etc)
 - **REST API** — documented API with Bearer token auth for AI agents and integrations
 - **API keys** — create scoped keys for external tools
 - **Invite system** — control registration with invite codes

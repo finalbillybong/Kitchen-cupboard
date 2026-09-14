@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../api/client';
 import Modal from '../components/Modal';
+import { useAuth } from '../hooks/useAuth';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { useWebSocket } from '../hooks/useWebSocket';
 
@@ -23,18 +24,21 @@ const post = (path, body) =>
   api.request(path, { method: 'POST', body: JSON.stringify(body) });
 
 export default function PlannerPage() {
+  const { user } = useAuth();
   const [params] = useSearchParams(),
     { online } = useOnlineStatus();
   const [week, setWeek] = useState(monday()),
     [plan, setPlan] = useState(null),
     [recipes, setRecipes] = useState([]),
     [lists, setLists] = useState([]);
+  const [addedList, setAddedList] = useState(null);
   const [error, setError] = useState(''),
     [editor, setEditor] = useState(null),
     [review, setReview] = useState(null),
     [busy, setBusy] = useState(false);
   const [listId, setListId] = useState(''),
     [include, setInclude] = useState([]),
+    [exclude, setExclude] = useState([]),
     [groceries, setGroceries] = useState(false);
   const [suggest, setSuggest] = useState(false),
     [preferences, setPreferences] = useState({
@@ -54,15 +58,25 @@ export default function PlannerPage() {
       ]);
       setPlan(p);
       setRecipes(r);
-      setLists(l.filter((x) => !x.is_archived && x.role !== 'viewer'));
+      setLists(
+        l.filter(
+          (x) =>
+            !x.is_archived &&
+            (x.owner_id === user?.id ||
+              x.members?.some(
+                (m) => m.user_id === user?.id && m.role !== 'viewer',
+              )),
+        ),
+      );
     } catch (e) {
       setError(e.message);
     }
-  }, [week]);
+  }, [week, user?.id]);
   useEffect(() => {
     load();
     setReview(null);
     setInclude([]);
+    setExclude([]);
   }, [load]);
   useWebSocket('shared', load);
   const run = async (fn) => {
@@ -87,6 +101,21 @@ export default function PlannerPage() {
     setRemoval(null);
     setMove(null);
   };
+  const saveSlot = async (slot) => {
+    if (plan.linked_slots.some((s) => s.cooking_slot_id === slot.id))
+      return preview([slot]);
+    const result = await post('/planner/preview', {
+      expected_version: plan.version,
+      slots: [slot],
+      remove_ids: [],
+    });
+    await post('/planner/commit', {
+      token: result.token,
+      request_id: crypto.randomUUID(),
+    });
+    setEditor(null);
+    await load();
+  };
   const title = (slot) => {
     if (slot.kind === 'skip') return slot.notes || 'Eating out / skip';
     const cooking =
@@ -97,11 +126,12 @@ export default function PlannerPage() {
         : slot;
     return `${slot.kind === 'leftover' ? 'Leftovers: ' : ''}${recipes.find((r) => r.id === cooking?.meal_id)?.name || 'Recipe'}`;
   };
-  const groceryPreview = async (selected = include) => {
+  const groceryPreview = async (selected = include, excluded = exclude) => {
     const result = await post('/planner/shopping/preview', {
       week,
       list_id: listId,
       include_staples: selected,
+      exclude_keys: excluded,
     });
     setReview({
       ...result,
@@ -132,6 +162,17 @@ export default function PlannerPage() {
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold">Meal planner</h1>
+      {addedList && (
+        <p
+          role="status"
+          className="rounded-xl bg-primary-50 dark:bg-primary-950 p-3"
+        >
+          Shopping list updated.{' '}
+          <Link className="underline" to={`/list/${addedList.id}`}>
+            Open {addedList.name}
+          </Link>
+        </p>
+      )}
       {!online && (
         <p>Offline — saved plans are available to view. Reconnect to edit.</p>
       )}
@@ -150,7 +191,17 @@ export default function PlannerPage() {
         >
           ← Previous
         </button>
-        <strong>Week of {week}</strong>
+        <strong>
+          {new Date(week + 'T12:00:00').toLocaleDateString(undefined, {
+            day: 'numeric',
+            month: 'short',
+          })}{' '}
+          –{' '}
+          {new Date(offset(week, 6) + 'T12:00:00').toLocaleDateString(
+            undefined,
+            { day: 'numeric', month: 'short', year: 'numeric' },
+          )}
+        </strong>
         <button
           className="btn-secondary"
           onClick={() => setWeek(offset(week, 7))}
@@ -166,23 +217,41 @@ export default function PlannerPage() {
       </p>
       <div className="flex gap-2 flex-wrap">
         <button
-          className="btn-primary"
+          className="btn-secondary"
           disabled={!online}
           onClick={() => setSuggest(true)}
         >
           Suggest meals
         </button>
         <button
-          className="btn-secondary"
+          className="btn-primary"
           disabled={!online}
-          onClick={() => setGroceries(true)}
+          onClick={() => {
+            setInclude([]);
+            setExclude([]);
+            setGroceries(true);
+          }}
         >
-          Review groceries
+          Add week to shopping list
         </button>
-        <Link className="btn-secondary" to="/pantry">
-          Pantry staples
-        </Link>
       </div>
+      {params.get('recipe') && (
+        <p className="rounded-xl bg-primary-50 dark:bg-primary-950 p-3">
+          Choose a day below to schedule{' '}
+          {recipes.find((r) => r.id === params.get('recipe'))?.name ||
+            'your recipe'}
+          .
+        </p>
+      )}
+      {recipes.length === 0 && (
+        <p>
+          Add your first recipe in{' '}
+          <Link className="text-primary-600" to="/library">
+            Library
+          </Link>
+          , then choose a day below.
+        </p>
+      )}
       <div className="space-y-3">
         {Array.from({ length: 7 }, (_, i) => offset(week, i)).map((day) => (
           <section className="card p-4" key={day}>
@@ -222,42 +291,47 @@ export default function PlannerPage() {
                         {slot.kind !== 'skip' && slot.notes && (
                           <p className="text-sm">{slot.notes}</p>
                         )}
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            className="text-sm text-primary-600"
-                            disabled={!online}
-                            onClick={() =>
-                              run(() =>
-                                preview([{ ...slot, pinned: !slot.pinned }]),
-                              )
-                            }
-                          >
-                            {slot.pinned ? 'Unpin' : 'Pin'}
-                          </button>
-                          <button
-                            className="text-sm text-primary-600"
-                            disabled={!online}
-                            onClick={() =>
-                              setMove({
-                                ...slot,
-                                target_day: day,
-                                target_type: type,
-                              })
-                            }
-                          >
-                            Move / swap
-                          </button>
-                          <button
-                            className="text-sm text-red-600"
-                            disabled={!online}
-                            onClick={() => {
-                              setRemoval(slot);
-                              setReassign('');
-                            }}
-                          >
-                            Remove
-                          </button>
-                        </div>
+                        <details>
+                          <summary className="cursor-pointer text-sm text-gray-500">
+                            Meal options
+                          </summary>
+                          <div className="flex flex-wrap gap-3 mt-2">
+                            <button
+                              className="text-sm text-primary-600"
+                              disabled={!online}
+                              onClick={() =>
+                                run(() =>
+                                  saveSlot({ ...slot, pinned: !slot.pinned }),
+                                )
+                              }
+                            >
+                              {slot.pinned ? 'Unpin' : 'Pin'}
+                            </button>
+                            <button
+                              className="text-sm text-primary-600"
+                              disabled={!online}
+                              onClick={() =>
+                                setMove({
+                                  ...slot,
+                                  target_day: day,
+                                  target_type: type,
+                                })
+                              }
+                            >
+                              Move / swap
+                            </button>
+                            <button
+                              className="text-sm text-red-600"
+                              disabled={!online}
+                              onClick={() => {
+                                setRemoval(slot);
+                                setReassign('');
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </details>
                       </>
                     ) : (
                       <button
@@ -286,7 +360,7 @@ export default function PlannerPage() {
             className="space-y-3"
             onSubmit={(e) => {
               e.preventDefault();
-              run(() => preview([editor]));
+              run(() => saveSlot(editor));
             }}
           >
             <label className="block">
@@ -371,29 +445,6 @@ export default function PlannerPage() {
               />
             </label>
             <label className="block">
-              Time
-              <input
-                type="time"
-                className="input"
-                value={editor.time}
-                onChange={(e) => setEditor({ ...editor, time: e.target.value })}
-                required
-              />
-            </label>
-            <label className="block">
-              Duration (minutes)
-              <input
-                type="number"
-                min="1"
-                max="1440"
-                className="input"
-                value={editor.duration}
-                onChange={(e) =>
-                  setEditor({ ...editor, duration: Number(e.target.value) })
-                }
-              />
-            </label>
-            <label className="block">
               Notes
               <textarea
                 className="input"
@@ -403,18 +454,49 @@ export default function PlannerPage() {
                 }
               />
             </label>
-            <label className="block">
-              <input
-                type="checkbox"
-                checked={editor.pinned}
-                onChange={(e) =>
-                  setEditor({ ...editor, pinned: e.target.checked })
-                }
-              />{' '}
-              Pin this meal
-            </label>
+            <details className="space-y-3">
+              <summary className="cursor-pointer font-medium">
+                Time & planning options
+              </summary>
+              <label className="block">
+                Time
+                <input
+                  type="time"
+                  className="input"
+                  value={editor.time}
+                  onChange={(e) =>
+                    setEditor({ ...editor, time: e.target.value })
+                  }
+                  required
+                />
+              </label>
+              <label className="block">
+                Duration (minutes)
+                <input
+                  type="number"
+                  min="1"
+                  max="1440"
+                  className="input"
+                  value={editor.duration}
+                  onChange={(e) =>
+                    setEditor({ ...editor, duration: Number(e.target.value) })
+                  }
+                />
+              </label>
+
+              <label className="block">
+                <input
+                  type="checkbox"
+                  checked={editor.pinned}
+                  onChange={(e) =>
+                    setEditor({ ...editor, pinned: e.target.checked })
+                  }
+                />{' '}
+                Pin this meal
+              </label>
+            </details>
             <button className="btn-primary" disabled={!online || busy}>
-              Review change
+              Save meal
             </button>
           </form>
         )}
@@ -600,13 +682,14 @@ export default function PlannerPage() {
       <Modal
         error={error}
         open={groceries && !review}
-        title="Generate groceries"
+        title="Add week to shopping list"
         onClose={() => setGroceries(false)}
       >
         <div className="space-y-3">
           <p>
-            Choose a list you can edit. Pantry staples start excluded. Batch
-            ingredients are purchased in the cooking week.
+            Choose a list, then review what you need. Ingredients you usually
+            have start excluded. For batch meals, shopping covers the cooking
+            session and its linked leftovers.
           </p>
           <select
             aria-label="Destination shopping list"
@@ -626,16 +709,14 @@ export default function PlannerPage() {
             disabled={!listId || busy}
             onClick={() => run(() => groceryPreview())}
           >
-            Preview groceries
+            Review shopping
           </button>
         </div>
       </Modal>
       <Modal
         error={error}
         open={!!review}
-        title={
-          review?.kind === 'plan' ? 'Review meal plan' : 'Review groceries'
-        }
+        title={review?.kind === 'plan' ? 'Review meal plan' : 'Review shopping'}
         onClose={() => setReview(null)}
         wide
       >
@@ -668,51 +749,110 @@ export default function PlannerPage() {
               </>
             ) : (
               <>
+                <p className="font-medium">
+                  Shopping list: {lists.find((l) => l.id === listId)?.name}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Untick anything you already have. This applies to this
+                  shopping review; it does not change your usual ingredients.
+                </p>
+                <div className="space-y-2">
+                  {[
+                    ...review.requirements,
+                    ...(review.excluded_items || review.excluded_staples),
+                  ]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((row) => {
+                      const included = review.requirements.some(
+                        (r) => r.key === row.key,
+                      );
+                      return (
+                        <label
+                          className="flex items-start gap-3 rounded-xl bg-gray-50 dark:bg-navy-800 p-3"
+                          key={row.key}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            aria-label={`Include ${row.name}`}
+                            checked={included}
+                            disabled={!online || busy}
+                            onChange={(event) => {
+                              const nextInclude = event.target.checked
+                                ? [...new Set([...include, row.ingredient_id])]
+                                : include;
+                              const nextExclude = event.target.checked
+                                ? exclude.filter((key) => key !== row.key)
+                                : [...new Set([...exclude, row.key])];
+                              setInclude(nextInclude);
+                              setExclude(nextExclude);
+                              run(() =>
+                                groceryPreview(nextInclude, nextExclude),
+                              );
+                            }}
+                          />
+                          <span>
+                            <strong>{row.name}</strong> ·{' '}
+                            {row.quantity ?? 'quantity not specified'}{' '}
+                            {row.unit}
+                            {!included && (
+                              <span className="block text-sm text-gray-500">
+                                {row.exclusion_reason === 'usually_have'
+                                  ? 'Usually have — excluded'
+                                  : 'Already have — excluded'}
+                              </span>
+                            )}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
                 {!review.changes.length && <p>No shopping changes required.</p>}
-                {review.changes.map((change) => (
-                  <div className="border-b pb-2" key={change.key}>
-                    <strong>
-                      {change.action}: {(change.after || change.before).name}
-                    </strong>
-                    <p>
-                      {change.before?.quantity ?? '—'} →{' '}
-                      {change.after?.quantity ?? '—'}{' '}
-                      {(change.after || change.before).unit}
-                    </p>
-                    {change.manual_item_retained && (
+                <details
+                  className="space-y-3"
+                  open={review.changes.some(
+                    (c) => c.action !== 'add' || c.preserve_completed,
+                  )}
+                >
+                  <summary className="cursor-pointer font-medium">
+                    Changes to this list ({review.changes.length})
+                  </summary>
+                  {review.changes.map((change) => (
+                    <div className="border-b pb-2" key={change.key}>
+                      <strong>
+                        {
+                          { add: 'Add', remove: 'Remove', update: 'Update' }[
+                            change.action
+                          ]
+                        }
+                        : {(change.after || change.before).name}
+                      </strong>
                       <p>
-                        Your renamed or re-unitised item is retained separately.
+                        {change.before?.quantity ?? '—'} →{' '}
+                        {change.after?.quantity ?? '—'}{' '}
+                        {(change.after || change.before).unit}
                       </p>
-                    )}
-                    {change.preserve_completed && (
-                      <p>
-                        Completed quantity kept. Extra required:{' '}
-                        {change.extra_required || 0}
-                      </p>
-                    )}
-                    {(change.after || change.before).sources.map((s, i) => (
-                      <p key={i} className="text-sm text-gray-500">
-                        {s.recipe} · {s.servings} servings · {s.wording}{' '}
-                        {s.notes}
-                      </p>
-                    ))}
-                  </div>
-                ))}
-                {review.excluded_staples.map((row) => (
-                  <label className="block" key={row.key}>
-                    <input
-                      type="checkbox"
-                      disabled={busy}
-                      onChange={() => {
-                        const next = [...include, row.ingredient_id];
-                        setInclude(next);
-                        run(() => groceryPreview(next));
-                      }}
-                    />{' '}
-                    Include pantry staple: {row.name} (
-                    {row.quantity ?? 'to taste'} {row.unit})
-                  </label>
-                ))}
+                      {change.manual_item_retained && (
+                        <p>
+                          Your renamed or re-unitised item is retained
+                          separately.
+                        </p>
+                      )}
+                      {change.preserve_completed && (
+                        <p>
+                          Completed quantity kept. Extra required:{' '}
+                          {change.extra_required || 0}
+                        </p>
+                      )}
+                      {(change.after || change.before).sources.map((s, i) => (
+                        <p key={i} className="text-sm text-gray-500">
+                          {s.recipe} · {s.servings} servings · {s.wording}{' '}
+                          {s.notes}
+                        </p>
+                      ))}
+                    </div>
+                  ))}
+                </details>
               </>
             )}
             <button
@@ -726,6 +866,8 @@ export default function PlannerPage() {
                       : '/planner/shopping/commit',
                     { token: review.token, request_id: review.request_id },
                   );
+                  if (review.kind === 'groceries')
+                    setAddedList(lists.find((l) => l.id === listId));
                   setReview(null);
                   setGroceries(false);
                   await load();
@@ -737,65 +879,6 @@ export default function PlannerPage() {
           </div>
         )}
       </Modal>
-    </div>
-  );
-}
-
-export function PantryPage() {
-  const [ingredients, setIngredients] = useState([]),
-    [pantry, setPantry] = useState(null),
-    [error, setError] = useState('');
-  const { online } = useOnlineStatus();
-  const load = useCallback(async () => {
-    try {
-      const [i, p] = await Promise.all([
-        api.getIngredients(),
-        api.cachedLibraryRead('/pantry', 'pantry'),
-      ]);
-      setIngredients(i);
-      setPantry(p);
-    } catch (e) {
-      setError(e.message);
-    }
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
-  useWebSocket('shared', load);
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">Pantry staples</h1>
-      <p>
-        Mark ingredients you usually have. Basics remains your regular-purchase
-        checklist.
-      </p>
-      {error && <p role="alert">{error}</p>}
-      {ingredients.map((i) => (
-        <label className="card p-3 flex gap-3" key={i.id}>
-          <input
-            type="checkbox"
-            disabled={!online || !pantry}
-            checked={pantry?.ingredient_ids.includes(i.id) || false}
-            onChange={async (e) => {
-              try {
-                setPantry(
-                  await api.request(`/pantry/${i.id}`, {
-                    method: 'PUT',
-                    body: JSON.stringify({
-                      expected_version: pantry.version,
-                      usually_have: e.target.checked,
-                    }),
-                  }),
-                );
-              } catch (e) {
-                setError(e.message);
-                await load();
-              }
-            }}
-          />
-          {i.name}
-        </label>
-      ))}
     </div>
   );
 }

@@ -1128,3 +1128,50 @@ def test_pdf_csv_escape_and_cover_content(api_client, tmp_path, monkeypatch):
     assert rows[1][1] == "'=SUM(1,2)"
     assert 'Fold <flour> & stir; "gently".' in rows[1][7]
     assert cover["image_ids"][0] in rows[1][8]
+
+
+def test_review_exclusions_restore_and_preserve_purchased_and_manual_items(api_client):
+    c, f = api_client
+    h, lid = bearer(f['jwt']), f['own_list_id']
+    meal = recipe(c, h)
+    change_plan(c, h, [{'id': 'cook', 'day': '2026-09-14', 'meal_id': meal['id']}])
+    first = shopping(c, h, lid)
+    carrot = next(r for r in first['requirements'] if r['name'] == 'Carrots')
+    excluded = shopping(c, h, lid, exclude_keys=[carrot['key']])
+    assert [r['name'] for r in excluded['requirements']] == ['Salt']
+    assert excluded['excluded_items'][0]['exclusion_reason'] == 'already_have'
+    assert excluded['excluded_staples'] == []
+    assert items(c, h, lid) == []  # Merely reviewing must not alter the list.
+    commit_shopping(c, h, excluded)
+    assert shopping(c, h, lid, exclude_keys=[carrot['key']])['changes'] == []
+    restored = shopping(c, h, lid)
+    assert restored['changes'][0]['action'] == 'add'
+    commit_shopping(c, h, restored)
+    purchased = next(i for i in items(c, h, lid) if i['name'] == 'Carrots')
+    assert c.put(f"/api/lists/{lid}/items/{purchased['id']}", headers=h, json={'checked': True}).status_code == 200
+    manual = c.post(f'/api/lists/{lid}/items', headers=h, json={'name': 'Personal extra', 'quantity': 3}).json()
+    removal = shopping(c, h, lid, exclude_keys=[carrot['key']])
+    assert removal['changes'][0]['preserve_completed']
+    commit_shopping(c, h, removal)
+    remaining = {i['id']: i for i in items(c, h, lid)}
+    assert remaining[purchased['id']]['checked']
+    assert remaining[manual['id']]['quantity'] == 3
+    assert shopping(c, h, lid, exclude_keys=[carrot['key']])['changes'] == []
+
+
+def test_review_exclusions_keep_incompatible_units_and_stale_checks(api_client):
+    c, f = api_client
+    h, lid = bearer(f['jwt']), f['own_list_id']
+    meal = recipe(c, h, ingredients=[{'name': 'Flour', 'quantity': 500, 'unit': 'g'}])
+    ingredient_id = meal['ingredients'][0]['ingredient_id']
+    other = recipe(c, h, name='Cup recipe', ingredients=[{'ingredient_id': ingredient_id, 'quantity': 1, 'unit': 'cup'}])
+    change_plan(c, h, [{'id': 'cook', 'day': '2026-09-14', 'meal_id': meal['id']}, {'id': 'other', 'day': '2026-09-15', 'meal_id': other['id']}])
+    first = shopping(c, h, lid)
+    gram = next(r for r in first['requirements'] if r['unit'] == 'g')
+    excluded = shopping(c, h, lid, exclude_keys=[gram['key']])
+    assert len(excluded['requirements']) == 1
+    assert excluded['requirements'][0]['key'] != gram['key']
+    c.post(f'/api/lists/{lid}/items', headers=h, json={'name': 'New manual item'})
+    stale = c.post('/api/planner/shopping/commit', headers=h, json={'token': excluded['token'], 'request_id': str(uuid.uuid4())})
+    assert stale.status_code == 409
+    assert len(items(c, h, lid)) == 1

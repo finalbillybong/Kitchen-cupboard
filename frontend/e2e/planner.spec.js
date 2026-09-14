@@ -1,36 +1,88 @@
 import { expect, test } from '@playwright/test';
 
-test('photo draft without a title opens for review and requires a name to save', async ({ page, request, browserName }) => {
+test('photo draft without a title opens for review and requires a name to save', async ({
+  page,
+  request,
+  browserName,
+}) => {
   const name = `photo-${browserName}-${Date.now()}`;
-  const registered = await request.post('/api/auth/register', { data: {
-    username: name, email: `${name}@example.test`, password: 'correct-horse-battery-staple',
-  } });
+  const registered = await request.post('/api/auth/register', {
+    data: {
+      username: name,
+      email: `${name}@example.test`,
+      password: 'correct-horse-battery-staple',
+    },
+  });
   expect(registered.ok()).toBeTruthy();
   const { access_token: token } = await registered.json();
-  await page.route('**/api/recipes/import/status', route => route.fulfill({ json: { configured: true } }));
-  await page.route('**/api/recipes/import/photos', route => route.fulfill({ json: {
-    name: '', description: '', base_servings: 2, source_url: null,
-    prep_minutes: 0, cook_minutes: 0, tags: [], steps: ['Stir gently.'],
-    ingredients: [{ name: `Herbs ${name}`, quantity: null, unit: '', notes: 'to taste', scales_with_servings: true }],
-    image_ids: [], review_required: true,
-  } }));
+  await page.route('**/api/recipes/import/status', (route) =>
+    route.fulfill({ json: { configured: true } }),
+  );
+  await page.route('**/api/recipes/import/photos', (route) =>
+    route.fulfill({
+      json: {
+        name: '',
+        description: '',
+        base_servings: 2,
+        source_url: null,
+        prep_minutes: 0,
+        cook_minutes: 0,
+        tags: [],
+        steps: ['Stir gently.'],
+        ingredients: [
+          {
+            name: `Herbs ${name}`,
+            quantity: null,
+            unit: '',
+            notes: 'to taste',
+            scales_with_servings: true,
+          },
+        ],
+        image_ids: [],
+        review_required: true,
+      },
+    }),
+  );
   await page.goto('/login');
-  await page.evaluate(token => localStorage.setItem('token', token), token);
+  await page.evaluate((token) => localStorage.setItem('token', token), token);
   await page.goto('/recipes');
-  await page.getByText('Import a recipe', { exact: true }).click();
+  await page.getByRole('button', { name: 'Add recipe', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Import from photos', exact: true })
+    .click();
   await page.getByLabel('Recipe photos').setInputFiles({
-    name: 'recipe.png', mimeType: 'image/png',
-    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=', 'base64'),
+    name: 'recipe.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=',
+      'base64',
+    ),
   });
-  await page.getByRole('button', { name: 'Review photo import', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Review photo import' })).toBeVisible();
-  await expect(page.getByText('The recipe title could not be read. Enter a name below before saving.')).toBeVisible();
-  await expect(page.getByLabel('Method', { exact: true })).toHaveValue('Stir gently.');
-  await page.getByRole('button', { name: 'Save meal', exact: true }).click();
-  expect(await page.getByLabel('Meal name', { exact: true }).evaluate(input => input.validity.valueMissing)).toBeTruthy();
-  await expect(page.getByRole('heading', { name: 'Review photo import' })).toBeVisible();
-  await page.getByLabel('Meal name', { exact: true }).fill(name);
-  await page.getByRole('button', { name: 'Save meal', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Review photo import', exact: true })
+    .click();
+  await expect(
+    page.getByRole('heading', { name: 'Review photo import' }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      'The recipe title could not be read. Enter a name below before saving.',
+    ),
+  ).toBeVisible();
+  await expect(page.getByLabel('Method', { exact: true })).toHaveValue(
+    'Stir gently.',
+  );
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
+  expect(
+    await page
+      .getByLabel('Recipe name', { exact: true })
+      .evaluate((input) => input.validity.valueMissing),
+  ).toBeTruthy();
+  await expect(
+    page.getByRole('heading', { name: 'Review photo import' }),
+  ).toBeVisible();
+  await page.getByLabel('Recipe name', { exact: true }).fill(name);
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(page.getByText('Stir gently.', { exact: true })).toBeVisible();
 });
@@ -88,6 +140,7 @@ test('recipe scaling, reviewed scheduling, groceries and offline viewing', async
   ).toBeVisible();
   await expect(page.getByText('Simmer gently.')).toBeVisible();
   const downloadPromise = page.waitForEvent('download');
+  await page.getByText('Share', { exact: true }).click();
   await page.getByRole('button', { name: 'Download PDF' }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toContain('.pdf');
@@ -101,29 +154,34 @@ test('recipe scaling, reviewed scheduling, groceries and offline viewing', async
   else await page.locator('section button.font-medium').first().click();
   await page.getByLabel('Planned recipe').selectOption(meal.id);
   await page.getByLabel('Planned servings').fill('4');
-  await page
-    .getByRole('button', { name: 'Review change', exact: true })
-    .click();
+  await page.getByRole('button', { name: 'Save meal', exact: true }).click();
   await expect(
-    page.getByRole('heading', { name: 'Review meal plan' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: 'Apply reviewed changes' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'Review meal plan' }),
+    page.getByRole('heading', { name: 'Plan a meal', exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole('button', { name: 'Review groceries', exact: true })
+    .getByRole('button', { name: 'Add week to shopping list', exact: true })
     .click();
   await page.getByLabel('Destination shopping list').selectOption(list.id);
   await page
-    .getByRole('button', { name: 'Preview groceries', exact: true })
+    .getByRole('button', { name: 'Review shopping', exact: true })
     .click();
   await expect(
-    page.getByText(`add: Carrots ${suffix}`, { exact: true }),
+    page.getByLabel(`Include Carrots ${suffix}`, { exact: true }),
   ).toBeVisible();
+  await page.getByLabel(`Include Salt ${suffix}`, { exact: true }).click();
+  await expect(
+    page.getByLabel(`Include Salt ${suffix}`, { exact: true }),
+  ).not.toBeChecked();
+  await expect(
+    page.getByText('Already have — excluded', { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel(`Include Salt ${suffix}`, { exact: true }).click();
+  await expect(
+    page.getByLabel(`Include Salt ${suffix}`, { exact: true }),
+  ).toBeChecked();
   await page.getByRole('button', { name: 'Apply reviewed changes' }).click();
   await expect(
-    page.getByRole('heading', { name: 'Review groceries', exact: true }),
+    page.getByRole('heading', { name: 'Review shopping', exact: true }),
   ).toHaveCount(0);
   const items = await (
     await request.get(`/api/lists/${list.id}/items`, { headers })
@@ -132,8 +190,9 @@ test('recipe scaling, reviewed scheduling, groceries and offline viewing', async
   expect(items.find((i) => i.name === `Salt ${suffix}`).quantity).toBeNull();
   await page.goto(`/list/${list.id}`);
   await page
-    .getByRole('button', { name: `Already have Salt ${suffix}`, exact: true })
+    .getByRole('button', { name: `Options for Salt ${suffix}`, exact: true })
     .click();
+  await page.getByRole('button', { name: 'Already have', exact: true }).click();
   await expect(
     page
       .locator('[data-item-id]', { hasText: `Salt ${suffix}` })
@@ -143,6 +202,7 @@ test('recipe scaling, reviewed scheduling, groceries and offline viewing', async
   await page.goto(`/recipes/${meal.id}`);
   await expect(page.getByRole('heading', { name: meal.name })).toBeVisible();
   await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller));
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { name: meal.name })).toBeVisible();
@@ -180,18 +240,24 @@ test('manual recipe editor saves methods and unknown quantities', async ({
     auth.access_token,
   );
   await page.goto('/recipes');
-  await page.getByRole('button', { name: 'New recipe', exact: true }).click();
-  await page.getByLabel('Meal name', { exact: true }).fill(name);
+  await page.getByRole('button', { name: 'Add recipe', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Enter manually', exact: true })
+    .click();
+  await page.getByLabel('Recipe name', { exact: true }).fill(name);
   await page
     .getByLabel('Method', { exact: true })
     .fill('Chop vegetables.\nCook until tender.');
+  await page
+    .getByText('Recipe details & planning preferences', { exact: true })
+    .click();
   await page.getByLabel('Recipe tags', { exact: true }).fill('vegetarian');
   await page
     .getByLabel('New ingredient name', { exact: true })
     .fill(`Herbs ${name}`);
   await page.getByLabel('Quantity', { exact: true }).fill('');
   await page.getByLabel('Ingredient notes', { exact: true }).fill('to taste');
-  await page.getByRole('button', { name: 'Save meal', exact: true }).click();
+  await page.getByRole('button', { name: 'Save recipe', exact: true }).click();
   await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
   await expect(
     page.getByText('Cook until tender.', { exact: true }),
