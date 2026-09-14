@@ -240,4 +240,11 @@ test('mobile Library unifies website import, usual ingredients and Basics shoppi
     path: testInfo.outputPath('mobile-library.png'),
     fullPage: true,
   });
+  await page.getByRole('link', { name: new RegExp(`Website soup ${name}`) }).click();
+  await page.getByText('Manage recipe', { exact: true }).click();
+  await page.getByRole('button', { name: 'Archive recipe', exact: true }).click();
+  await expect(page).toHaveURL('/library');
+  await page.getByLabel('Search recipes').fill(name);
+  await expect(page.getByText('No recipes found. Add a recipe or change your filters.')).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 });
