@@ -1,60 +1,28 @@
 <?xml version="1.0"?>
 <Container version="2">
   <Name>KitchenCupboard</Name>
-  <Repository>finalbillybong/kitchen-cupboard</Repository>
+  <Repository>finalbillybong/kitchen-cupboard:latest</Repository>
   <Registry>https://hub.docker.com/r/finalbillybong/kitchen-cupboard</Registry>
-  <Branch>
-    <Tag>latest</Tag>
-    <TagDescription>Latest stable release</TagDescription>
-  </Branch>
+  <Beta>true</Beta>
   <Network>bridge</Network>
   <Privileged>false</Privileged>
   <Support>https://github.com/finalbillybong/Kitchen-cupboard/issues</Support>
   <Project>https://github.com/finalbillybong/Kitchen-cupboard</Project>
-  <Overview>Kitchen Cupboard is a collaborative, self-hosted shopping list app. Features include real-time multi-user collaboration via WebSocket, smart auto-categorization, recipe import from popular cooking sites, offline PWA support, and a clean mobile-first UI. Perfect for families and households who want a private, shared shopping list without relying on cloud services.</Overview>
-  <Category>HomeAutomation: Productivity: Tools:</Category>
+  <Overview>Kitchen Cupboard is a self-hosted recipe library, weekly meal planner and collaborative shopping list for households. Share recipes, ratings, a regular-purchase Basics checklist and pantry flags; plan batch cooking and leftovers, then review combined ingredients before adding them to shopping. Includes real-time list updates, recipe website imports, text/PDF/CSV exports and a mobile-friendly PWA with offline shopping-item edits. Photo extraction through a configured vision provider and one-way Nextcloud calendar sync are optional. Recipes and planning are shared across all active accounts; shopping lists have separate sharing permissions. This is a beta, and the latest image follows main. Set a random SECRET_KEY before starting, then create the first admin account locally; later registrations require invitations by default. HTTPS is needed for browser PWA/offline support except on localhost.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <ExtraSearchTerms>recipes cooking groceries shopping meal planner pantry household nextcloud</ExtraSearchTerms>
+  <Requires>x86-64 (linux/amd64). Persistent storage at /app/data. A random SECRET_KEY of at least 32 characters.</Requires>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
   <TemplateURL>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/unraid/kitchen-cupboard.xml</TemplateURL>
+  <ReadMe>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/README.md</ReadMe>
+  <License>MIT</License>
   <Icon>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/frontend/public/icon-512.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
-  <Description>Kitchen Cupboard is a collaborative, self-hosted shopping list app. Features include real-time multi-user collaboration via WebSocket, smart auto-categorization, recipe import from popular cooking sites, offline PWA support, and a clean mobile-first UI. Perfect for families and households who want a private, shared shopping list without relying on cloud services.</Description>
-  <Networking>
-    <Mode>bridge</Mode>
-    <Publish>
-      <Port>
-        <HostPort>8111</HostPort>
-        <ContainerPort>8000</ContainerPort>
-        <Protocol>tcp</Protocol>
-      </Port>
-    </Publish>
-  </Networking>
-  <Data>
-    <Volume>
-      <HostDir>/mnt/user/appdata/kitchen-cupboard</HostDir>
-      <ContainerDir>/app/data</ContainerDir>
-      <Mode>rw</Mode>
-    </Volume>
-  </Data>
-  <Environment>
-    <Variable>
-      <Value>**CHANGE_ME**</Value>
-      <Name>SECRET_KEY</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
-      <Value>false</Value>
-      <Name>REGISTRATION_ENABLED</Name>
-      <Mode/>
-    </Variable>
-    <Variable>
-      <Value></Value>
-      <Name>CORS_ORIGINS</Name>
-      <Mode/>
-    </Variable>
-  </Environment>
   <Config Name="Web UI Port" Target="8000" Default="8111" Mode="tcp" Description="Port for the web interface." Type="Port" Display="always" Required="true" Mask="false">8111</Config>
-  <Config Name="Data Path" Target="/app/data" Default="/mnt/user/appdata/kitchen-cupboard" Mode="rw" Description="Path to store the SQLite database and application data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/kitchen-cupboard</Config>
-  <Config Name="Secret Key" Target="SECRET_KEY" Default="**CHANGE_ME**" Description="REQUIRED: A long random string used for JWT signing. Generate with: python -c 'import secrets; print(secrets.token_urlsafe(64))'. The app will not start without this." Type="Variable" Display="always" Required="true" Mask="true">**CHANGE_ME**</Config>
-  <Config Name="Registration Enabled" Target="REGISTRATION_ENABLED" Default="false" Description="Set to 'true' to allow open registration. Default is 'false' (invite-only mode). Enable temporarily for initial setup, then disable." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Data Path" Target="/app/data" Default="/mnt/user/appdata/kitchen-cupboard" Mode="rw" Description="Persistent SQLite database, recipe uploads and integration encryption key. Back up the entire directory before updating. The app runs as UID/GID 1001 after the entrypoint adjusts permissions." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/kitchen-cupboard</Config>
+  <Config Name="Secret Key" Target="SECRET_KEY" Default="" Description="REQUIRED: Enter a random JWT signing key of at least 32 characters. Generate with: python3 -c 'import secrets; print(secrets.token_urlsafe(64))'. Keep it stable across updates. The app refuses to start with a missing or short key." Type="Variable" Display="always" Required="true" Mask="true"></Config>
+  <Config Name="Registration Enabled" Target="REGISTRATION_ENABLED" Default="false" Description="Leave false to require invitations after initial setup. The first registered user becomes admin without an invite, even when this is false; create that account before public exposure. Set true only for open registration." Type="Variable" Display="always" Required="false" Mask="false">false</Config>
+  <Config Name="Public URL" Target="PUBLIC_URL" Default="http://localhost:8111" Description="Set to the full URL users open, including http:// or https:// and any non-default port. Used for recipe links in Nextcloud calendar events. Replace localhost with your server address or public hostname." Type="Variable" Display="always" Required="false" Mask="false">http://localhost:8111</Config>
+  <Config Name="Integration LAN Hosts" Target="INTEGRATION_LAN_HOSTS" Default="" Description="Optional comma-separated hostnames of internal HTTPS Nextcloud or vision servers. Use hostnames only, without schemes or paths. TLS certificates are still verified. Leave empty for public endpoints only." Type="Variable" Display="advanced-hide" Required="false" Mask="false"></Config>
   <Config Name="CORS Origins" Target="CORS_ORIGINS" Default="" Description="Optional comma-separated browser origins allowed to call the API. Leave empty for same-origin only; command-line and server-side agents do not require this." Type="Variable" Display="advanced-hide" Required="false" Mask="false"></Config>
 </Container>

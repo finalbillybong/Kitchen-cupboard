@@ -1,10 +1,12 @@
 # Kitchen Cupboard beta
 
-A shared meal planner and collaborative shopping list app built for self-hosting on Docker/Unraid.
+A shared recipe library, meal planner and collaborative shopping list app built for self-hosting on Docker/Unraid. The current application version is **1.1.0 (beta)**.
 
 Recipes now include methods, tags, ratings, photos and exports. A shared weekly meal
 planner supports leftovers, suggestions, pantry-aware grocery reviews and optional
 one-way Nextcloud sync. See [setup, migrations and validation](docs/recipes-planner-release.md).
+
+Recipes, ingredients, Basics, pantry flags and the planner are shared across all active accounts on the installation. Shopping lists have their own owner and editor/viewer permissions. Core shopping, recipes and planning work without an external service; photo extraction and Nextcloud sync are optional integrations.
 
 ## Everyday use
 
@@ -14,7 +16,7 @@ one-way Nextcloud sync. See [setup, migrations and validation](docs/recipes-plan
 - **Basics** is the reusable regular-purchase checklist inside Library. **Usually have** is a flag in Library → Ingredients; flagged ingredients start excluded from planner shopping reviews.
 - **Settings** is the gear button. Administrators manage planner defaults under **Planner**, and photo AI / Nextcloud connections under **Integrations**.
 
-Shopping edits can queue offline. Previously viewed recipes and plans remain available to read; their edits and planner shopping commits require connectivity.
+Shopping-item edits can queue offline. Previously viewed recipes and plans remain available to read; recipe/planner edits, imports, exports and planner shopping commits require connectivity. Browser installation and service-worker offline support require HTTPS, except on localhost; ordinary LAN HTTP still supports online use.
 
 ## Features
 
@@ -30,14 +32,22 @@ Shopping edits can queue offline. Previously viewed recipes and plans remain ava
 - **Dark mode** — automatic or manual toggle
 - **Offline support** — Workbox precaches the app shell; item changes are applied instantly and durably replayed from a credential-free browser outbox
 - **PWA** — installable on Android and iOS home screens with a chef hat icon
-- **Recipe import** — import and review a complete recipe from a website or photos; website import works with any site using Schema.org JSON-LD (BBC Good Food, AllRecipes, Jamie Oliver, etc)
+- **Shared recipe library** — methods, ingredient quantities, serving scaling, preparation/cooking times, tags, categories, photos, per-user ratings and a shared To try collection
+- **Recipe import** — review editable drafts from websites with supported Schema.org Recipe JSON-LD, or extract from photos using an administrator-configured vision provider; website access and markup affect import success
+- **Recipe archive and exports** — creators/admins can archive recipes, admins can restore them; download individual recipes as text/PDF or the active collection as CSV/a PDF cookbook
+- **Weekly meal planner** — configurable meal slots, suggestions, skips, batch cooking and linked leftovers, including portions planned for later weeks
+- **Reviewed grocery generation** — combine compatible ingredient quantities, exclude ingredients you already have, and track planner contributions separately from manually added items
+- **Basics and pantry flags** — a shared regular-purchase checklist and a separate Usually have flag; this is not stock or expiry tracking
+- **Nextcloud calendar sync** — optional one-way CalDAV publishing with retry/status controls
 - **REST API** — documented API with Bearer token auth for AI agents and integrations
 - **API keys** — create scoped keys for external tools
 - **Invite system** — control registration with invite codes
 - **Admin panel** — manage users and invite codes
-- **Security hardened** — non-root container, HSTS/CSP headers, refresh token rotation, audit logging, registration rate limiting
+- **Authentication and access controls** — the entrypoint fixes data permissions as root, then runs the app as UID/GID 1001; JWT refresh rotation, scoped API keys, HSTS/CSP headers, audit logging and login/registration rate limits
 
 ## Quick Start (Docker Compose)
+
+The included Compose file **builds the app from source**. Docker with Compose and Python 3 (for the key-generation example) are required; Node and application Python dependencies are installed inside the build stages.
 
 1. Clone the repository:
    ```bash
@@ -50,7 +60,7 @@ Shopping edits can queue offline. Previously viewed recipes and plans remain ava
    export SECRET_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(64))')"
    ```
 
-3. Keep `SECRET_KEY` exported when running Compose, or store it in a Compose `.env` file.
+3. Keep `SECRET_KEY` exported when running Compose, or store it in a Compose `.env` file. Keep the key stable across container recreations. Set `PUBLIC_URL` in the same way to the app's browser URL, such as `https://cupboard.example.com`, for calendar recipe links.
 
 4. Start the app:
    ```bash
@@ -59,24 +69,33 @@ Shopping edits can queue offline. Previously viewed recipes and plans remain ava
 
 5. Open `http://your-server:8111` in your browser.
 
-6. The **first user to register** automatically becomes admin.
+6. The **first user to register** automatically becomes admin, even with `REGISTRATION_ENABLED=false`. Create that account before exposing the installation publicly. Leave registration disabled to require admin-generated invite codes for subsequent users.
+
+Compose maps host port **8111** to container port **8000** and persists application data in `./data`.
 
 ## Unraid Setup
 
-1. Copy `docker-compose.yml` to your Unraid server or use the Docker template.
-2. Map the `/app/data` volume to a persistent location (e.g., `/mnt/user/appdata/kitchen-cupboard`).
-3. Set environment variables:
-   - `SECRET_KEY`: A long random string (required for security)
-   - `REGISTRATION_ENABLED`: Set to `false` to require invite codes
-   - `CORS_ORIGINS`: Optional comma-separated browser origins for cross-origin agents
+The repository includes an [Unraid Docker template](unraid/kitchen-cupboard.xml). It uses the published image **`finalbillybong/kitchen-cupboard:latest`** from [Docker Hub](https://hub.docker.com/r/finalbillybong/kitchen-cupboard). Published builds currently target **linux/amd64 (x86-64)**.
+
+In Unraid's **Docker → Add Container**, use the template or enter its settings manually:
+
+1. Set repository to `finalbillybong/kitchen-cupboard:latest`, network to `bridge`, and leave privileged mode disabled.
+2. Map TCP container port `8000` to host port `8111`.
+3. Map `/app/data` to `/mnt/user/appdata/kitchen-cupboard` with read/write access.
+4. Fill in **Secret Key** with a random key of at least 32 characters; it is deliberately blank in the template and the app will refuse to start without it. Use the key-generation command above.
+5. Leave `REGISTRATION_ENABLED=false`. Initial admin registration works without an invite; there is no need to enable public registration for setup.
+6. Set **Public URL** (`PUBLIC_URL`) to the URL users open. If needed, set **Integration LAN Hosts** (`INTEGRATION_LAN_HOSTS`) in the advanced settings for internal HTTPS integration servers.
+7. Start the container, open `http://your-server:8111`, and create the first account.
+
+`latest` follows successful image builds from `main`; it is not a frozen release. Use a published version tag or image digest when a fixed deployment is required. Report problems through [GitHub Issues](https://github.com/finalbillybong/Kitchen-cupboard/issues).
 
 ## Cloudflare Tunnel
 
-Since this app uses JWT-based authentication with bcrypt password hashing, it's safe to expose via Cloudflare Tunnel. Recommended setup:
+For HTTPS access through Cloudflare Tunnel:
 
-1. Create a Cloudflare Tunnel pointing to `http://localhost:8111`
-2. Set `REGISTRATION_ENABLED=false` in your environment
-3. Create the first admin account, then generate invite codes for other users
+1. Create the first admin account locally and keep `REGISTRATION_ENABLED=false`.
+2. Point the tunnel at `http://your-server:8111` using an address reachable from the tunnel process/container. `localhost` only works when the tunnel process shares the host's network.
+3. Set `PUBLIC_URL` to the public HTTPS origin, and generate invite codes for other users. Ensure the proxy supports WebSocket connections.
 
 For PWA updates, configure a Cloudflare Cache Rule to bypass caching for the exact path `/sw.js`. Purge the existing `/sw.js` object during rollout; the application also serves it with `no-cache`, `no-store`, and `CDN-Cache-Control: no-store` headers.
 
@@ -84,10 +103,33 @@ For PWA updates, configure a Cloudflare Cache Rule to bypass caching for the exa
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY` | *(required)* | JWT signing key — app refuses to start without it |
-| `REGISTRATION_ENABLED` | `false` | Set `true` for open registration, `false` for invite-only |
+| `SECRET_KEY` | *(required)* | Random JWT signing key, at least 32 characters; missing, short or recognised insecure values stop startup |
+| `REGISTRATION_ENABLED` | `false` | Set `true` for open registration; `false` requires invites after the first admin account |
 | `DATABASE_URL` | `sqlite:///./data/kitchen_cupboard.db` | Database connection string |
+| `DATA_DIR` | `data` | Uploads and integration encryption key directory; resolves to `/app/data` in the container |
+| `PUBLIC_URL` | `http://localhost:8111` | User-facing app origin used in Nextcloud recipe links |
 | `CORS_ORIGINS` | *(empty)* | Optional comma-separated browser origins; CLI/server agents do not require CORS |
+| `INTEGRATION_LAN_HOSTS` | *(empty)* | Explicit comma-separated hostnames permitted for internal HTTPS integrations; TLS verification stays enabled |
+| `SSL_CERT_FILE` | *(system trust)* | Optional mounted CA bundle for integrations using a private certificate authority |
+
+The full list of application defaults, including token lifetimes and rate limits, is in [backend/config.py](backend/config.py). When using Compose, add extra variables to the service's `environment` section; a Compose `.env` file alone only supplies variables that the Compose file references.
+
+## Optional integrations
+
+Administrators configure integrations in **Settings → Integrations** using an interactive login. API keys cannot read or change integration credentials.
+
+- **Photo import:** supply a complete HTTPS OpenAI-compatible chat completions endpoint, a vision model and an API key. No provider is selected by default. Selected recipe photos are sent to that provider for extraction, then presented as an editable draft before saving.
+- **Nextcloud:** supply the HTTPS installation URL, username and app password, then select or create a writable calendar. Kitchen Cupboard publishes the current week and future saved plans. It owns those calendar events: remote edits are overwritten and deleted events are recreated. Disabling sync leaves existing events in the calendar.
+
+Credentials are encrypted using the persistent `integration.key` file. See the [integration guide](docs/recipes-planner-release.md#integration-setup) for internal host configuration, sync behaviour and recovery details.
+
+## Backups and updates
+
+Back up the entire persistent data directory, including `kitchen_cupboard.db`, `uploads/` and `integration.key`, and securely retain the runtime configuration. Stop the container while copying its data, or use a consistent SQLite backup procedure. The encryption key is required to recover saved integration credentials.
+
+Startup applies database migrations automatically. Before updating, keep a complete backup: rolling back the image alone does not undo a migration. For a source/Compose installation, pull the desired source revision and run `docker compose up -d --build`. For Unraid, update the image through the Docker UI after the corresponding Test and Docker image workflows succeed.
+
+After an update, check the UI, `/api/`, `/api/openapi.json` and container logs. Detailed migration and rollback guidance is in the [release guide](docs/recipes-planner-release.md#migration-and-rollout).
 
 ## API Documentation
 
@@ -130,3 +172,11 @@ cd android
 - **Real-time**: WebSocket
 - **Offline**: Workbox app-shell/read cache plus an IndexedDB browser outbox
 - **Container**: Docker (single container, multi-stage build)
+
+## Development and validation
+
+Use Python 3.12 and Node 22.22.2+ for local backend/frontend work. CI runs backend tests, frontend tests and a production build, plus Playwright flows in Chromium and Firefox. The [validation guide](docs/recipes-planner-release.md#validation-commands) contains the commands and a dated verification record, including the remaining live photo-provider and Android runtime checks.
+
+## Licence and Community Apps
+
+Kitchen Cupboard is licensed under the [MIT License](LICENSE). The repository includes [Community Apps profile metadata](ca_profile.xml) and an [Unraid Docker template](unraid/kitchen-cupboard.xml). See the [submission guide](docs/unraid-community-apps.md) for the repository details and portal validation steps; inclusion in Community Apps requires Unraid's review.
