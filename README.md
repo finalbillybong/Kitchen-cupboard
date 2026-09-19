@@ -179,4 +179,4 @@ Use Python 3.12 and Node 22.22.2+ for local backend/frontend work. CI runs backe
 
 ## Licence and Community Apps
 
-Kitchen Cupboard is licensed under the [MIT License](LICENSE). The repository includes [Community Apps profile metadata](ca_profile.xml) and an [Unraid Docker template](unraid/kitchen-cupboard.xml). See the [submission guide](docs/unraid-community-apps.md) for the repository details and portal validation steps; inclusion in Community Apps requires Unraid's review.
+Kitchen Cupboard is licensed under the [MIT License](LICENSE). Community Apps submission files are maintained in the dedicated [unraid-templates repository](https://github.com/finalbillybong/unraid-templates); an [Unraid Docker template copy](unraid/kitchen-cupboard.xml) is also included here. Submit the template repository so the scanner does not treat Android resource XML as application templates. See the [submission guide](docs/unraid-community-apps.md) for portal validation steps; inclusion in Community Apps requires Unraid's review.

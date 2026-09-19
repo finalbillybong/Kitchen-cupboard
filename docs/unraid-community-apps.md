@@ -1,14 +1,15 @@
 # Community Apps submission
 
-Kitchen Cupboard uses a standard Docker template with a published image. Submit the application repository directly; a separate template repository or Compose package is not required for this setup.
+Kitchen Cupboard uses a standard Docker template with a published image. Submit the dedicated **unraid-templates** repository. The application repository contains 12 valid Android XML files which the Community Apps scanner reports as `not_unraid_application`; they belong to the Android build and must be retained.
 
 | Field | Value |
 | --- | --- |
-| Repository | `https://github.com/finalbillybong/Kitchen-cupboard` |
+| Submission repository | `https://github.com/finalbillybong/unraid-templates` |
+| Application source | `https://github.com/finalbillybong/Kitchen-cupboard` |
 | Branch | `main` |
-| App template | [`unraid/kitchen-cupboard.xml`](../unraid/kitchen-cupboard.xml) |
-| Repository profile | [`ca_profile.xml`](../ca_profile.xml) |
-| Licence | [MIT](../LICENSE) |
+| App template | [`kitchen-cupboard.xml`](https://github.com/finalbillybong/unraid-templates/blob/main/kitchen-cupboard.xml) |
+| Repository profile | [`ca_profile.xml`](https://github.com/finalbillybong/unraid-templates/blob/main/ca_profile.xml) |
+| Licence | [MIT](https://github.com/finalbillybong/unraid-templates/blob/main/LICENSE) |
 | Image | `finalbillybong/kitchen-cupboard:latest` |
 | Platform | `linux/amd64` (x86-64) |
 | Release status | Beta; `latest` follows image builds from `main` |
@@ -16,9 +17,9 @@ Kitchen Cupboard uses a standard Docker template with a published image. Submit 
 
 ## Before review
 
-1. Publish the README, licence, profile and template on `main` so the submission service can fetch them. Keep the repository public and active.
-2. Check the Test and Docker image workflows for the published commit. The workflows run independently, so an image build alone does not establish that tests passed.
-3. Open [Community Apps Submit](https://ca.unraid.net/submit/new) in your browser and complete any sign-in requested by the site. Enter the repository URL above.
+1. Publish the README, licence, profile and template on `main` in **unraid-templates** so the submission service can fetch them. Keep the repository public and active.
+2. Check the Test and Docker image workflows in the **Kitchen-cupboard application repository** for the image being submitted. The workflows run independently, so an image build alone does not establish that tests passed.
+3. Open [Community Apps Submit](https://ca.unraid.net/submit/new) in your browser and complete any sign-in requested by the site. Enter `https://github.com/finalbillybong/unraid-templates`. If a draft uses the application repository, replace that URL or create a new draft for the template repository.
 4. Run **Validate**, then **Scan**. Resolve any reported issues and rerun both after meaningful XML changes.
 5. Check the preview for the application name, icon, support link, beta marker and configuration fields, then submit for review once the portal checks pass.
 
@@ -32,6 +33,6 @@ The template uses version 2 `Config` entries for port `8000`, appdata at `/app/d
 
 ## Maintaining the listing
 
-Keep the template's overview, beta marker, image reference and configuration descriptions aligned with the app. Keep `TemplateURL` pointed at the exact raw XML location, and retain working icon, README and support links. Update the root repository profile if ownership or support arrangements change.
+Keep the template's overview, beta marker, image reference and configuration descriptions aligned with the app. Update the canonical `kitchen-cupboard.xml` in **unraid-templates** and the copy at `unraid/kitchen-cupboard.xml` in the application repository together. Both should have `TemplateURL` set to `https://raw.githubusercontent.com/finalbillybong/unraid-templates/main/kitchen-cupboard.xml`. Retain working icon, README and support links. Update the root profile in **unraid-templates** if ownership or support arrangements change.
 
 References: [submission help](https://ca.unraid.net/submit/help), [repository profile rules](https://ca.unraid.net/submit/help/repository-info-xml), [XML field reference](https://ca.unraid.net/submit/help/xml-field-reference), and the [official starter repository](https://github.com/unraid/unraid-community-apps-starter).

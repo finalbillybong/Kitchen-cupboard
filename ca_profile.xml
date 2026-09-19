@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<CommunityApplications>
-  <Profile>Kitchen Cupboard by finalbillybong provides a self-hosted recipe library, meal planner and collaborative shopping lists for households. This repository contains the application source and its Unraid Docker template. The application is currently in beta. Installation and backup instructions are in the repository README; report bugs and request help through GitHub Issues.</Profile>
-  <Icon>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/frontend/public/icon-512.png</Icon>
-  <WebPage>https://github.com/finalbillybong/Kitchen-cupboard</WebPage>
-  <Forum>https://github.com/finalbillybong/Kitchen-cupboard/issues</Forum>
-</CommunityApplications>

@@ -13,7 +13,7 @@
   <ExtraSearchTerms>recipes cooking groceries shopping meal planner pantry household nextcloud</ExtraSearchTerms>
   <Requires>x86-64 (linux/amd64). Persistent storage at /app/data. A random SECRET_KEY of at least 32 characters.</Requires>
   <WebUI>http://[IP]:[PORT:8000]</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/unraid/kitchen-cupboard.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/finalbillybong/unraid-templates/main/kitchen-cupboard.xml</TemplateURL>
   <ReadMe>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/README.md</ReadMe>
   <License>MIT</License>
   <Icon>https://raw.githubusercontent.com/finalbillybong/Kitchen-cupboard/main/frontend/public/icon-512.png</Icon>
