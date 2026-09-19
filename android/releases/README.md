@@ -1,13 +1,10 @@
 # Android 1.1.0 build status
 
-`KitchenCupboard-1.1.0.apk` is a debug development build (version code 3) with camera/gallery file selection and authenticated export saving. It supports Android 8+ and targets Android 15.
+Prebuilt APKs have been removed from this repository's current branch. Build from the `android/` source after configuring `APP_URL` and `APP_HOST` in `MainActivity.java` for your own installation.
 
-**Signing is not yet compatible with the bundled 1.0.1 installer.** The available local debug key differs from the original signing key. Do not treat this APK as an in-place update. Rebuild with the original keystore before distributing an update to existing installations.
+The 1.1.0 source (version code 3) includes camera/gallery file selection and authenticated export saving. It supports Android 8+ and targets Android 15.
 
-| APK | Signing certificate SHA-256 |
-|---|---|
-| Bundled 1.0.1 | `ac77641a45d151ce3d7be98bc14d74e0b308e21f34cc74140ebd3ba7fb1b4967` |
-| Development 1.1.0 | `77b2a33bac774904ebee7362bb67c00be2abf89acdd9ace4e9b6ced2982b6dbb` |
+**Updates to existing installations require the original signing key.** The previously distributed 1.0.1 and development 1.1.0 builds used different signing certificates and could not update each other in place.
 
 The build accepts `KC_ANDROID_KEYSTORE`, `KC_ANDROID_KEY_ALIAS`, `KC_ANDROID_STORE_PASSWORD` and `KC_ANDROID_KEY_PASSWORD` through environment variables. Supply these privately, then run `./gradlew assembleDebug` with Java 17 and Android SDK 35. No signing secret is stored in the repository.
 

@@ -145,15 +145,15 @@ After deployment, verify a full read/write key end to end with the self-cleaning
 KC_BASE_URL="http://your-server:8111" KC_API_KEY="kc_your_full_key" ./scripts/api-smoke.sh
 ```
 
-## Android APK
+## Android source build
 
-Development build: **[Kitchen Cupboard 1.1.0 APK](android/releases/KitchenCupboard-1.1.0.apk)**.
+Prebuilt APKs are no longer distributed in this repository. The `android/` directory contains the source for a lightweight Android wrapper for the hosted PWA.
 
-This build uses a different signing certificate from the bundled 1.0.1 APK, so it cannot update that installation in place. The original keystore is needed to produce a compatible update; see [Android build status](android/releases/README.md).
+Before building, change `APP_URL` and `APP_HOST` in [MainActivity.java](android/app/src/main/java/com/finalbillybong/kitchencupboard/MainActivity.java) to your own installation. The source currently targets the maintainer's server. See [Android build status](android/releases/README.md) for signing and verification notes.
 
-The APK supports Android 8 or newer and includes safe spacing for modern status bars, display cutouts, keyboards, and bottom gesture navigation. Android may ask you to allow installs from the browser or file manager you use to open it.
+The wrapper supports Android 8 or newer and includes safe spacing for modern status bars, display cutouts, keyboards, and bottom gesture navigation.
 
-The `android/` directory contains the lightweight Android wrapper for the hosted PWA. It keeps authentication and offline data inside Android WebView storage and opens links to other sites in the device browser. The downloadable APK is a debug-signed personal build, not a Google Play release.
+It keeps authentication and offline data inside Android WebView storage and opens links to other sites in the device browser. A local debug build is not a Google Play release.
 
 The 1.1.0 wrapper adds camera/gallery photo selection and authenticated PDF/CSV exports through the Android document picker.
 

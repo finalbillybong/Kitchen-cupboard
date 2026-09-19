@@ -14,4 +14,3 @@ android/local.properties
 android/app/build/
 *.apk
 *.aab
-!android/releases/*.apk
