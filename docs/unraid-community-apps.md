@@ -25,6 +25,12 @@ Kitchen Cupboard uses a standard Docker template with a published image. Submit 
 
 XML parsing and local metadata checks do not replace Community Apps' own validation, scan or moderation. The portal returned HTTP 403 to the preparation environment; no portal validation, scan or submission has been completed by that environment.
 
+## Existing submission drafts
+
+The root `ca_profile.xml` is also retained in the application repository for existing drafts that still reference it. Keep that file in place when updating the submission setup. Its presence resolves the missing-profile error, but scanning the application repository still encounters the 12 Android XML resources.
+
+For a scan containing only Unraid metadata, start a new draft for `https://github.com/finalbillybong/unraid-templates`, branch `main`, then run Validate and Scan. That repository contains exactly two XML files: `ca_profile.xml` and `kitchen-cupboard.xml`. A result listing 12 non-Unraid XML files matches the application repository; check the repository shown on the draft and rerun the scan rather than deleting Android resources.
+
 ## Installation checks
 
 Use a fresh, disposable appdata directory and an unused host port when checking a new installation. Enter a unique random Secret Key of at least 32 characters, set Public URL to the reachable app URL, and keep Registration Enabled false. Verify startup, first-account admin registration, subsequent invite-only registration, recipe/planner/shopping use, and persistence after container recreation. Do not reuse an existing household's appdata for a clean-install check.
